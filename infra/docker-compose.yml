@@ -1,0 +1,32 @@
+services:
+  user-service:
+    build: ../services/user-service
+    ports:
+      - "5000:5000"
+
+  product-service:
+    build: ../services/product-service
+    ports:
+      - "5001:5000"
+
+  api-gateway:
+    build: ../services/api-gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      - user-service
+      - product-service
+
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ecommerce
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:8
+    ports:
+      - "6379:6379"
