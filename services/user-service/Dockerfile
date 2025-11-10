@@ -1,2 +1,7 @@
-FROM python:3.13-slim
-CMD ["echo", "product-service Service container ready"]
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+EXPOSE 5000
+CMD ["node", "src/index.js"]

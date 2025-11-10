@@ -1,1 +1,95 @@
+# -------------------------
+# Core OS & Editor files
+# -------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# -------------------------
+# Environment files
+# -------------------------
 .env
+.env.*
+!.env.sample
+
+# -------------------------
+# Node.js
+# -------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+build/
+.cache/
+
+# -------------------------
+# Python
+# -------------------------
+venv/
+env/
+.venv/
+Pipfile.lock
+poetry.lock
+*.egg-info/
+*.egg
+.pytest_cache/
+.ipynb_checkpoints/
+.notebooks_cache/
+__pycache__/
+
+# -------------------------
+# Go
+# -------------------------
+bin/
+*.exe
+*.test
+*.out
+
+# -------------------------
+# Docker
+# -------------------------
+**/Dockerfile~
+**/docker-compose.override.yml
+docker-compose.override.yml
+
+# -------------------------
+# Logs
+# -------------------------
+*.log
+logs/
+**/logs/
+*.pid
+*.seed
+
+# -------------------------
+# Jupyter Artifacts
+# -------------------------
+notebooks/artifacts/*
+!notebooks/artifacts/.gitkeep
+
+# -------------------------
+# Frontend (Vite/React)
+# -------------------------
+frontend/node_modules/
+frontend/.vite/
+frontend/.env
+frontend/dist/
+frontend/.cache/
+
+# -------------------------
+# MLflow / Model files
+# -------------------------
+mlruns/
+mlflow/
+model_registry/
+models/
+*.pkl
+*.h5
+*.onnx
