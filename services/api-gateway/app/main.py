@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 import httpx
 
 app = FastAPI()
@@ -10,14 +11,76 @@ PRODUCT_SERVICE_URL = "http://product-service:5000"
 async def root():
     return {"message": "API Gateway alive"}
 
-@app.get("/users/ping")
-async def user_ping():
+# ==================== USER SERVICE ROUTES ====================
+@app.api_route("/api/auth/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy_auth(path: str, request: Request):
+    """Proxy all /api/auth/* requests to user-service"""
     async with httpx.AsyncClient() as client:
-        r = await client.get(f"{USER_SERVICE_URL}/api/auth/ping")
-        return r.json()
+        url = f"{USER_SERVICE_URL}/api/auth/{path}"
+        headers = dict(request.headers)
+        headers.pop("host", None)
+        
+        try:
+            body = await request.body()
+            response = await client.request(
+                method=request.method,
+                url=url,
+                content=body,
+                headers=headers,
+            )
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+            )
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
 
-@app.get("/products/ping")
-async def product_ping():
+# ==================== PRODUCT SERVICE ROUTES ====================
+@app.api_route("/api/products/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy_products_with_path(path: str, request: Request):
+    """Proxy all /api/products/* requests to product-service"""
     async with httpx.AsyncClient() as client:
-        r = await client.get(f"{PRODUCT_SERVICE_URL}/api/products/ping")
-        return r.json()
+        url = f"{PRODUCT_SERVICE_URL}/api/products/{path}"
+        headers = dict(request.headers)
+        headers.pop("host", None)
+        
+        try:
+            body = await request.body()
+            response = await client.request(
+                method=request.method,
+                url=url,
+                content=body,
+                headers=headers,
+            )
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+            )
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.api_route("/api/products", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy_products(request: Request):
+    """Proxy /api/products (without path) to product-service"""
+    async with httpx.AsyncClient() as client:
+        url = f"{PRODUCT_SERVICE_URL}/api/products"
+        headers = dict(request.headers)
+        headers.pop("host", None)
+        
+        try:
+            body = await request.body()
+            response = await client.request(
+                method=request.method,
+                url=url,
+                content=body,
+                headers=headers,
+            )
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+            )
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
