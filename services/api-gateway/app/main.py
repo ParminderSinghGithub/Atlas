@@ -6,6 +6,7 @@ app = FastAPI()
 
 USER_SERVICE_URL = "http://user-service:5000"
 PRODUCT_SERVICE_URL = "http://product-service:5000"
+EVENT_SERVICE_URL = "http://event-service:5000"
 
 @app.get("/ping")
 async def root():
@@ -66,6 +67,55 @@ async def proxy_products(request: Request):
     """Proxy /api/products (without path) to product-service"""
     async with httpx.AsyncClient() as client:
         url = f"{PRODUCT_SERVICE_URL}/api/products"
+        headers = dict(request.headers)
+        headers.pop("host", None)
+        
+        try:
+            body = await request.body()
+            response = await client.request(
+                method=request.method,
+                url=url,
+                content=body,
+                headers=headers,
+            )
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+            )
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+# ==================== EVENT SERVICE ROUTES ====================
+@app.api_route("/events/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy_events_with_path(path: str, request: Request):
+    """Proxy all /events/* requests to event-service"""
+    async with httpx.AsyncClient() as client:
+        url = f"{EVENT_SERVICE_URL}/events/{path}"
+        headers = dict(request.headers)
+        headers.pop("host", None)
+        
+        try:
+            body = await request.body()
+            response = await client.request(
+                method=request.method,
+                url=url,
+                content=body,
+                headers=headers,
+            )
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+            )
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.api_route("/events", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy_events(request: Request):
+    """Proxy /events (without path) to event-service"""
+    async with httpx.AsyncClient() as client:
+        url = f"{EVENT_SERVICE_URL}/events"
         headers = dict(request.headers)
         headers.pop("host", None)
         
