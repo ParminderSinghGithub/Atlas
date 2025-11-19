@@ -46,6 +46,50 @@ services:
     ports:
       - "6379:6379"
 
+  # ---------- MESSAGE QUEUE ----------
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: bitnami/kafka:latest
+    ports:
+      - "9092:9092"
+    environment:
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+    depends_on:
+      - zookeeper
+
+  # ---------- EVENT PROCESSING ----------
+  event-service:
+    build: ../services/event-service
+    ports:
+      - "5003:5000"
+    environment:
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - kafka
+
+  event-consumer:
+    build: ../services/event-consumer
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - POSTGRES_URI=postgresql://postgres:postgres@db:5432/ecommerce
+      - PARQUET_DIR=/data/events_parquet
+    volumes:
+      - ../notebooks/artifacts/events:/data/events_parquet
+    depends_on:
+      - kafka
+      - db
+
   # ---------- FRONTEND ----------
   frontend:
     build: ../frontend
