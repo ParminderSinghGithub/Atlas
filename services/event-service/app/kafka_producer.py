@@ -16,7 +16,6 @@ async def get_producer() -> AIOKafkaProducer:
                     bootstrap_servers="kafka:9092",
                     compression_type="gzip",
                     acks="all",
-                    max_in_flight_requests_per_connection=5,
                     enable_idempotence=True,
                 )
                 await _producer.start()

@@ -68,7 +68,7 @@ def write_event_to_parquet(event_data):
     """Write event to Parquet file partitioned by date."""
     try:
         # Parse timestamp to get date for partitioning
-        timestamp = event_data.get("timestamp")
+        timestamp = event_data.get("ts")
         if timestamp:
             dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
             date_str = dt.strftime("%Y-%m-%d")
@@ -145,4 +145,14 @@ async def consume_events():
 
 
 if __name__ == "__main__":
-    asyncio.run(consume_events())
+    print("=" * 50)
+    print("EVENT CONSUMER STARTING...")
+    print("=" * 50)
+    try:
+        asyncio.run(consume_events())
+    except KeyboardInterrupt:
+        print("\n🛑 Shutting down gracefully...")
+    except Exception as e:
+        print(f"\n❌ Fatal error: {e}")
+        import traceback
+        traceback.print_exc()

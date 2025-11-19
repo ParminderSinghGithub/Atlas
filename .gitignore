@@ -93,3 +93,10 @@ models/
 *.pkl
 *.h5
 *.onnx
+
+# -------------------------
+# Personal Interview Prep Docs
+# (Internal only - not for public repo)
+# -------------------------
+TESTING_REPORT.md
+CHALLENGES_AND_SOLUTIONS.md

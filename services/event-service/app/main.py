@@ -11,27 +11,13 @@ app = FastAPI(title="Event Ingestion Service")
 
 
 class Event(BaseModel):
-    event_id: Optional[str] = None
+    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     event_type: Literal["view", "click", "add_to_cart", "purchase"]
     user_id: Optional[str] = None
     session_id: str
     product_id: Optional[str] = None
-    timestamp: Optional[str] = None
+    ts: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     properties: Dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("event_id", mode="before")
-    @classmethod
-    def generate_event_id(cls, v):
-        if v is None:
-            return str(uuid.uuid4())
-        return v
-
-    @field_validator("timestamp", mode="before")
-    @classmethod
-    def generate_timestamp(cls, v):
-        if v is None:
-            return datetime.now(timezone.utc).isoformat()
-        return v
 
 
 @app.on_event("startup")
