@@ -30,6 +30,18 @@ services:
     depends_on:
       - user-service
       - product-service
+      - catalog-service
+
+  catalog-service:
+    build: ../services/catalog-service
+    ports:
+      - "5004:5004"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ecommerce
+      - SERVICE_PORT=5004
+    depends_on:
+      - db
+    restart: unless-stopped
 
   # ---------- DATABASES ----------
   db:

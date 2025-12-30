@@ -1,0 +1,273 @@
+"""
+Seed script for Product Catalog Service.
+
+Creates:
+1. Categories (5 top-level + subcategories)
+2. Platform seller
+3. 2000 products with realistic data
+4. Latent item mappings (RetailRocket ID → Product UUID bridge)
+
+Usage:
+    python tools/seed-data/seed_catalog.py
+"""
+import sys
+import os
+from pathlib import Path
+from uuid import uuid5, UUID, NAMESPACE_DNS
+from decimal import Decimal
+from datetime import datetime, timezone
+import random
+
+# Add services/catalog-service to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "services" / "catalog-service"))
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from app.db.models import Base, Category, Seller, Product, LatentItemMapping
+from app.core.config import settings
+
+# Deterministic UUID generation (idempotent)
+def make_uuid(namespace: str, name: str) -> UUID:
+    """Generate deterministic UUID5 from namespace + name."""
+    return uuid5(NAMESPACE_DNS, f"{namespace}:{name}")
+
+# Category definitions (top-level + subcategories)
+CATEGORIES = {
+    "Electronics": ["Laptops", "Smartphones", "Tablets", "Accessories", "Audio"],
+    "Fashion": ["Men's Clothing", "Women's Clothing", "Shoes", "Bags", "Jewelry"],
+    "Home & Garden": ["Furniture", "Kitchen", "Decor", "Garden Tools", "Bedding"],
+    "Books": ["Fiction", "Non-Fiction", "Children's Books", "Textbooks", "Comics"],
+    "Other": ["Sports", "Toys", "Health", "Automotive", "Office Supplies"]
+}
+
+# Product templates (for realistic data generation)
+PRODUCT_TEMPLATES = {
+    "Laptops": {"prefix": "Laptop", "price_range": (500, 2500), "currency": "USD"},
+    "Smartphones": {"prefix": "Smartphone", "price_range": (200, 1500), "currency": "USD"},
+    "Tablets": {"prefix": "Tablet", "price_range": (150, 1000), "currency": "USD"},
+    "Accessories": {"prefix": "Accessory", "price_range": (10, 200), "currency": "USD"},
+    "Audio": {"prefix": "Audio Device", "price_range": (50, 800), "currency": "USD"},
+    "Men's Clothing": {"prefix": "Men's Wear", "price_range": (20, 300), "currency": "USD"},
+    "Women's Clothing": {"prefix": "Women's Wear", "price_range": (25, 400), "currency": "USD"},
+    "Shoes": {"prefix": "Footwear", "price_range": (30, 250), "currency": "USD"},
+    "Bags": {"prefix": "Bag", "price_range": (40, 600), "currency": "USD"},
+    "Jewelry": {"prefix": "Jewelry", "price_range": (15, 2000), "currency": "USD"},
+    "Furniture": {"prefix": "Furniture", "price_range": (100, 3000), "currency": "USD"},
+    "Kitchen": {"prefix": "Kitchen Item", "price_range": (15, 500), "currency": "USD"},
+    "Decor": {"prefix": "Home Decor", "price_range": (10, 800), "currency": "USD"},
+    "Garden Tools": {"prefix": "Garden Tool", "price_range": (20, 400), "currency": "USD"},
+    "Bedding": {"prefix": "Bedding", "price_range": (30, 300), "currency": "USD"},
+    "Fiction": {"prefix": "Fiction Book", "price_range": (10, 50), "currency": "USD"},
+    "Non-Fiction": {"prefix": "Non-Fiction Book", "price_range": (12, 60), "currency": "USD"},
+    "Children's Books": {"prefix": "Children's Book", "price_range": (8, 30), "currency": "USD"},
+    "Textbooks": {"prefix": "Textbook", "price_range": (50, 300), "currency": "USD"},
+    "Comics": {"prefix": "Comic", "price_range": (5, 50), "currency": "USD"},
+    "Sports": {"prefix": "Sports Item", "price_range": (15, 500), "currency": "USD"},
+    "Toys": {"prefix": "Toy", "price_range": (10, 200), "currency": "USD"},
+    "Health": {"prefix": "Health Product", "price_range": (10, 150), "currency": "USD"},
+    "Automotive": {"prefix": "Auto Part", "price_range": (20, 1000), "currency": "USD"},
+    "Office Supplies": {"prefix": "Office Supply", "price_range": (5, 200), "currency": "USD"},
+}
+
+def create_categories(session):
+    """Create category hierarchy (top-level + subcategories)."""
+    print("\n=== Creating Categories ===")
+    category_map = {}
+    
+    display_order = 0
+    for parent_name, subcategories in CATEGORIES.items():
+        # Create parent category
+        parent_id = make_uuid("category", parent_name)
+        parent_slug = parent_name.lower().replace(" ", "-").replace("&", "and")
+        
+        parent_category = Category(
+            id=parent_id,
+            name=parent_name,
+            slug=parent_slug,
+            description=f"{parent_name} products",
+            path=parent_slug,
+            parent_id=None,
+            display_order=display_order
+        )
+        session.merge(parent_category)
+        category_map[parent_name] = parent_id
+        print(f"  ✓ {parent_name} (parent)")
+        
+        display_order += 1
+        
+        # Create subcategories
+        for idx, sub_name in enumerate(subcategories):
+            sub_id = make_uuid("category", f"{parent_name}:{sub_name}")
+            sub_slug = sub_name.lower().replace(" ", "-").replace("'", "")
+            
+            sub_category = Category(
+                id=sub_id,
+                name=sub_name,
+                slug=sub_slug,
+                description=f"{sub_name} in {parent_name}",
+                path=f"{parent_slug}/{sub_slug}",
+                parent_id=parent_id,
+                display_order=idx
+            )
+            session.merge(sub_category)
+            category_map[sub_name] = sub_id
+            print(f"    ↳ {sub_name}")
+    
+    session.commit()
+    return category_map
+
+def create_seller(session):
+    """Create platform seller."""
+    print("\n=== Creating Seller ===")
+    seller_id = make_uuid("seller", "platform")
+    
+    seller = Seller(
+        id=seller_id,
+        name="Platform Marketplace",
+        email="marketplace@p1.com",
+        rating=Decimal("4.5"),
+        is_active=True
+    )
+    session.merge(seller)
+    session.commit()
+    print(f"  ✓ Platform Marketplace (rating: 4.5)")
+    
+    return seller_id
+
+def create_products(session, category_map, seller_id, count=2000):
+    """Create products distributed across categories."""
+    print(f"\n=== Creating {count} Products ===")
+    
+    # Get all subcategories (leaf nodes)
+    subcategories = [name for parent_subs in CATEGORIES.values() for name in parent_subs]
+    
+    random.seed(42)  # Reproducibility
+    
+    for i in range(count):
+        # Select random subcategory
+        sub_name = random.choice(subcategories)
+        category_id = category_map[sub_name]
+        
+        # Get template
+        template = PRODUCT_TEMPLATES[sub_name]
+        
+        # Generate product data
+        product_id = make_uuid("product", f"{sub_name}:{i}")
+        name = f"{template['prefix']} #{i+1}"
+        description = f"High-quality {template['prefix'].lower()} from our catalog"
+        price = Decimal(str(round(random.uniform(*template["price_range"]), 2)))
+        stock = random.randint(0, 100)
+        
+        # JSONB attributes (extensible)
+        attributes = {
+            "color": random.choice(["Black", "White", "Silver", "Blue", "Red"]),
+            "weight_kg": round(random.uniform(0.1, 5.0), 2),
+            "warranty_months": random.choice([6, 12, 24, 36])
+        }
+        
+        product = Product(
+            id=product_id,
+            name=name,
+            description=description,
+            price=price,
+            currency=template["currency"],
+            stock_quantity=stock,
+            image_url=f"https://images.p1.com/products/{product_id}.jpg",
+            thumbnail_url=f"https://images.p1.com/products/{product_id}_thumb.jpg",
+            attributes=attributes,
+            category_id=category_id,
+            seller_id=seller_id
+        )
+        session.merge(product)
+        
+        if (i + 1) % 200 == 0:
+            print(f"  ✓ {i + 1} products created")
+            session.commit()
+    
+    session.commit()
+    print(f"  ✓ All {count} products created")
+
+def create_latent_mappings(session, count=2000):
+    """
+    Create latent item mappings (RetailRocket item IDs → Product UUIDs).
+    
+    Critical for ML recommendations:
+    - Maps external RetailRocket item IDs to internal product UUIDs
+    - Allows trained models to reference products by their training IDs
+    - Confidence scores simulate mapping quality (0.7 - 1.0)
+    """
+    print(f"\n=== Creating Latent Item Mappings ===")
+    
+    # Fetch all product IDs
+    products = session.query(Product.id).order_by(Product.id).limit(count).all()
+    product_ids = [p.id for p in products]
+    
+    random.seed(42)  # Reproducibility
+    
+    # Simulate RetailRocket item IDs (100000 - 199999 range from dataset)
+    retailrocket_ids = random.sample(range(100000, 200000), min(count, len(product_ids)))
+    
+    for idx, (product_id, rr_id) in enumerate(zip(product_ids, retailrocket_ids)):
+        mapping_id = make_uuid("latent_mapping", f"{rr_id}:{product_id}")
+        
+        mapping = LatentItemMapping(
+            id=mapping_id,
+            product_id=product_id,
+            latent_item_id=rr_id,
+            confidence_score=Decimal(str(round(random.uniform(0.7, 1.0), 3))),
+            mapping_strategy="popularity_based",
+            mapping_metadata={
+                "source": "retailrocket_dataset",
+                "mapped_at": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        session.merge(mapping)
+        
+        if (idx + 1) % 200 == 0:
+            print(f"  ✓ {idx + 1} mappings created")
+            session.commit()
+    
+    session.commit()
+    print(f"  ✓ All {len(product_ids)} latent mappings created")
+
+def main():
+    """Execute seeding process."""
+    print("=" * 60)
+    print("Product Catalog Seeding Script")
+    print("=" * 60)
+    
+    # Create engine and session
+    engine = create_engine(settings.DATABASE_URL, echo=False)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+    
+    try:
+        # Step 1: Create categories
+        category_map = create_categories(session)
+        
+        # Step 2: Create seller
+        seller_id = create_seller(session)
+        
+        # Step 3: Create products
+        create_products(session, category_map, seller_id, count=2000)
+        
+        # Step 4: Create latent mappings (ML bridge)
+        create_latent_mappings(session, count=2000)
+        
+        print("\n" + "=" * 60)
+        print("✓ Seeding Complete!")
+        print("=" * 60)
+        print(f"Categories: {len(category_map)}")
+        print(f"Products: 2000")
+        print(f"Latent Mappings: 2000")
+        print("=" * 60)
+        
+    except Exception as e:
+        print(f"\n✗ Seeding failed: {e}")
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+if __name__ == "__main__":
+    main()
