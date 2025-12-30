@@ -43,6 +43,23 @@ services:
       - db
     restart: unless-stopped
 
+  recommendation-service:
+    build: ../services/recommendation-service
+    ports:
+      - "5005:5005"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ecommerce
+      - SERVICE_PORT=5005
+      - REDIS_ENABLED=false
+      - ARTIFACTS_PATH=/artifacts
+      - LOG_LEVEL=INFO
+    volumes:
+      - ../notebooks/artifacts:/artifacts:ro
+    depends_on:
+      - db
+      - catalog-service
+    restart: unless-stopped
+
   # ---------- DATABASES ----------
   db:
     image: postgres:17

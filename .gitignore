@@ -90,10 +90,12 @@ frontend/.cache/
 mlruns/
 mlflow/
 model_registry/
-models/
-*.pkl
-*.h5
-*.onnx
+notebooks/artifacts/models/*.pkl
+notebooks/artifacts/models/*.h5
+notebooks/artifacts/models/*.onnx
+notebooks/artifacts/models/*.joblib
+notebooks/artifacts/models/*.pth
+notebooks/artifacts/models/*.pt
 
 # -------------------------
 # Personal Interview Prep Docs
@@ -103,4 +105,4 @@ TESTING_REPORT.md
 CHALLENGES_AND_SOLUTIONS.md
 IMPLEMENTATION_REPORT.md
 API_TESTING_GUIDE.md
-test_services.ps1
+tests

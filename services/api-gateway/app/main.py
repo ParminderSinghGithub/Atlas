@@ -8,6 +8,8 @@ USER_SERVICE_URL = "http://user-service:5000"
 PRODUCT_SERVICE_URL = "http://product-service:5000"
 EVENT_SERVICE_URL = "http://event-service:5000"
 CATALOG_SERVICE_URL = "http://catalog-service:5004"
+RECOMMENDATION_SERVICE_URL = "http://recommendation-service:5005"
+RECOMMENDATION_SERVICE_URL = "http://recommendation-service:5005"
 
 @app.get("/ping")
 async def root():
@@ -93,6 +95,30 @@ async def proxy_catalog(path: str, request: Request):
     """Proxy all /api/v1/catalog/* requests to catalog-service (read-only)"""
     async with httpx.AsyncClient() as client:
         url = f"{CATALOG_SERVICE_URL}/api/v1/catalog/{path}"
+        headers = dict(request.headers)
+        headers.pop("host", None)
+        
+        # Forward query parameters
+        query_params = str(request.url.query)
+        if query_params:
+            url = f"{url}?{query_params}"
+        
+        try:
+            response = await client.get(url, headers=headers)
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+            )
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+# ==================== RECOMMENDATION SERVICE ROUTES ====================
+@app.api_route("/api/v1/recommendations", methods=["GET"])
+async def proxy_recommendations(request: Request):
+    """Proxy /api/v1/recommendations to recommendation-service"""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        url = f"{RECOMMENDATION_SERVICE_URL}/api/v1/recommendations"
         headers = dict(request.headers)
         headers.pop("host", None)
         

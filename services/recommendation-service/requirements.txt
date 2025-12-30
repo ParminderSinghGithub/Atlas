@@ -1,0 +1,26 @@
+# Core Framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# ML Models
+lightgbm==4.5.0
+scikit-learn==1.5.2
+numpy==2.0.2
+pandas==2.2.3
+
+# Data Loading
+pyarrow==18.1.0
+
+# Database
+asyncpg==0.30.0
+
+# Caching (Optional)
+redis==5.2.0
+
+# HTTP Client (for catalog service)
+httpx==0.28.1
+
+# Utilities
+python-multipart==0.0.20
