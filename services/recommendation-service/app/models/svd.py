@@ -32,8 +32,11 @@ class SVDModel:
     def __init__(self):
         self.model = None
         self.model_path = Path(settings.artifacts_path) / "models" / "svd_model.pkl"
-        self.user_mapping: Optional[dict] = None  # user_id → model_index
-        self.item_mapping: Optional[dict] = None  # model_index → retailrocket_item_id
+        self.user_mapping: Optional[dict] = None  # user_id → index
+        self.item_mapping: Optional[dict] = None  # item_id → index
+        self.index_to_item: Optional[dict] = None  # index → item_id (reverse mapping)
+        self.user_factors: Optional[np.ndarray] = None  # (n_users, n_factors)
+        self.item_factors: Optional[np.ndarray] = None  # (n_items, n_factors)
     
     def load(self):
         """
@@ -53,14 +56,23 @@ class SVDModel:
             with open(self.model_path, 'rb') as f:
                 artifact = pickle.load(f)
             
-            self.model = artifact['model']  # sklearn TruncatedSVD or similar
-            self.user_mapping = artifact.get('user_id_to_index', {})
-            self.item_mapping = artifact.get('index_to_item_id', {})
+            # Extract model and latent factors
+            self.model = artifact['model']  # sklearn TruncatedSVD
+            self.user_factors = artifact.get('user_factors')  # Shape: (n_users, n_factors)
+            self.item_factors = artifact.get('item_factors')  # Shape: (n_items, n_factors)
+            
+            # Extract ID mappings (NOTE: pickle uses different key names than expected!)
+            self.user_mapping = artifact.get('user_id_to_idx', artifact.get('user_id_to_index', {}))
+            self.item_mapping = artifact.get('product_id_to_idx', artifact.get('index_to_item_id', {}))
+            
+            # Create reverse mapping: index → item_id for candidate generation
+            self.index_to_item = {idx: item_id for item_id, idx in self.item_mapping.items()}
             
             logger.info(
                 f"SVD model loaded | "
                 f"users={len(self.user_mapping)} | "
-                f"items={len(self.item_mapping)}"
+                f"items={len(self.item_mapping)} | "
+                f"factors={self.user_factors.shape[1] if self.user_factors is not None else 'N/A'}"
             )
         
         except Exception as e:
@@ -93,25 +105,35 @@ class SVDModel:
             return None
         
         try:
-            user_idx = self.user_mapping[user_id]
+            # Convert user_id to string (mappings use string keys)
+            user_id_str = str(user_id)
             
-            # Get user's latent vector
-            # Compute scores for all items: score = user_vector · item_vectors
-            user_vector = self.model.components_[user_idx]
-            item_vectors = self.model.components_.T
-            scores = item_vectors @ user_vector
+            if user_id_str not in self.user_mapping:
+                logger.debug(f"User {user_id} not in SVD mapping")
+                return None
             
-            # Get top-K item indices
+            user_idx = self.user_mapping[user_id_str]
+            
+            # Get user's latent factor vector (shape: (n_factors,))
+            user_vector = self.user_factors[user_idx, :]
+            
+            # Compute scores for ALL items: score = user_vector · item_vector^T
+            # user_vector: (n_factors,)
+            # item_factors: (n_items, n_factors)
+            # scores: (n_items,)
+            scores = self.item_factors @ user_vector
+            
+            # Get top-K item indices (highest scores)
             top_k_indices = np.argsort(scores)[::-1][:k]
             
             # Map indices to RetailRocket item IDs
             retailrocket_ids = [
-                self.item_mapping[idx] 
+                self.index_to_item[idx] 
                 for idx in top_k_indices 
-                if idx in self.item_mapping
+                if idx in self.index_to_item
             ]
             
-            logger.debug(f"SVD generated {len(retailrocket_ids)} candidates for user {user_id}")
+            logger.info(f"SVD generated {len(retailrocket_ids)} candidates for user {user_id} | mean_score={scores[top_k_indices].mean():.4f}")
             return retailrocket_ids
         
         except Exception as e:

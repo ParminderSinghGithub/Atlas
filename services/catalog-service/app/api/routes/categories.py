@@ -123,7 +123,9 @@ def get_category(
                 path=sub.path
             )
             for sub in sorted(category.subcategories, key=lambda x: x.display_order)
-        ]
+        ],
+        created_at=category.created_at,
+        updated_at=category.updated_at
     )
 
 
@@ -235,7 +237,8 @@ def _build_breadcrumb(category: Category, db: Session) -> List[CategoryBreadcrum
             CategoryBreadcrumb(
                 id=current.id,
                 name=current.name,
-                slug=current.slug
+                slug=current.slug,
+                path=current.path
             )
         )
         # Fetch parent if exists

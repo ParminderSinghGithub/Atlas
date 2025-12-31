@@ -100,82 +100,63 @@ class PopularityModel:
             elif 'popularity_score' in item_features.columns:
                 popularity_col = 'popularity_score'
             else:
-                logger.warning("No popularity proxy column found in item_features, using uniform scores")
-                # Use product_id or item_id as index
-                id_col = 'product_id' if 'product_id' in item_features.columns else 'item_id'
-                self.popularity_scores = pd.Series(
-                    data=1.0,
-                    index=item_features[id_col] if id_col in item_features.columns else item_features.index
-                )
+                # Ultimate fallback: uniform scores
+                logger.warning("No popularity column found in item_features, using uniform scores")
+                self.popularity_scores = pd.Series(data=1.0, index=range(len(item_features)))
                 return
             
-            # Create popularity series
-            id_col = 'product_id' if 'product_id' in item_features.columns else 'item_id'
-            if id_col in item_features.columns:
-                self.popularity_scores = item_features.set_index(id_col)[popularity_col]
+            # Determine ID column
+            if 'product_id' in item_features.columns:
+                id_col = 'product_id'
+            elif 'item_id' in item_features.columns:
+                id_col = 'item_id'
             else:
-                self.popularity_scores = item_features[popularity_col]
+                # Use index as IDs
+                id_col = None
             
-            # Sort descending
-            self.popularity_scores = self.popularity_scores.sort_values(ascending=False)
+            # Create popularity series
+            if id_col:
+                self.popularity_scores = (
+                    item_features
+                    .set_index(id_col)[popularity_col]
+                    .sort_values(ascending=False)
+                )
+            else:
+                self.popularity_scores = (
+                    item_features[popularity_col]
+                    .sort_values(ascending=False)
+                )
             
-            logger.info(f"Generated popularity from item_features | items={len(self.popularity_scores)} | proxy={popularity_col}")
+            logger.info(f"Generated popularity baseline from item_features | items={len(self.popularity_scores)}")
         
         except Exception as e:
-            logger.error(f"Failed to generate popularity from item_features: {e}")
-            # Ultimate fallback: empty series
+            logger.error(f"Failed to generate popularity baseline: {e}")
             self.popularity_scores = pd.Series(dtype=float)
-        
-        except Exception as e:
-            logger.error(f"Failed to load popularity baseline: {e}")
-            self.popularity_scores = None
-            raise
     
-    def get_top_k(self, k: int = 20) -> List[int]:
+    def get_top_k(self, k: int = 100) -> List[int]:
         """
-        Get top-K most popular items.
+        Get top-K popular items.
         
         Args:
             k: Number of items to return
         
         Returns:
-            List of RetailRocket item IDs (sorted by popularity)
-        
-        Why always succeed:
-        - This is the last-resort fallback
-        - If this fails, service is unusable
-        - Better to return something than nothing
+            List of RetailRocket item IDs
         """
         if self.popularity_scores is None:
             self.load()
         
-        try:
-            # Get top-K item IDs
-            top_k_ids = self.popularity_scores.head(k).index.tolist()
-            logger.debug(f"Popularity baseline returned {len(top_k_ids)} items")
-            return top_k_ids
-        
-        except Exception as e:
-            logger.error(f"Popularity baseline failed: {e}")
-            # Ultimate fallback: return empty list (caller must handle)
+        if len(self.popularity_scores) == 0:
+            logger.warning("Popularity scores empty")
             return []
-    
-    def get_score(self, retailrocket_item_id: int) -> float:
-        """
-        Get popularity score for a specific item.
         
-        Why needed:
-        - Tie-breaking in ranking
-        - Fallback scoring when LightGBM unavailable
-        """
-        if self.popularity_scores is None:
-            self.load()
-        
-        return self.popularity_scores.get(retailrocket_item_id, 0.0)
+        # Return top-K item IDs
+        top_items = self.popularity_scores.nlargest(min(k, len(self.popularity_scores)))
+        return [int(item_id) for item_id in top_items.index]
     
     def is_available(self) -> bool:
         """Check if model is loaded and ready."""
-        return self.popularity_scores is not None
+        return self.popularity_scores is not None and len(self.popularity_scores) > 0
 
 
 # Global instance

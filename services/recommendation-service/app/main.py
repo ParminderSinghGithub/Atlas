@@ -20,6 +20,7 @@ from app.api.routes import router
 from app.models.lightgbm_ranker import get_ranker
 from app.models.svd import get_svd_model
 from app.models.popularity import get_popularity_model
+from app.models.similarity import get_similarity_model
 from app.features.loader import get_feature_loader
 from app.mapping.latent_mapper import get_latent_mapper
 
@@ -44,24 +45,71 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info(f"Starting {settings.service_name}...")
+    logger.info("="*70)
+    logger.info("ML MODEL INITIALIZATION")
+    logger.info("="*70)
     
     try:
-        # Load models (lazy loading - will load on first use)
-        logger.info("Initializing models...")
+        # 1. Load LightGBM Ranker
+        logger.info("[1/5] Loading LightGBM Ranker...")
         ranker = get_ranker()
-        svd = get_svd_model()
-        popularity = get_popularity_model()
+        try:
+            ranker.load()
+            logger.info(f"  PASS LightGBM | features={len(ranker.feature_names)}")
+        except Exception as e:
+            logger.error(f"  FAIL LightGBM: {e}")
+            if settings.enable_lightgbm_ranking:
+                raise
         
-        # Load feature tables
-        logger.info("Loading feature tables...")
+        # 2. Load SVD Model
+        logger.info("[2/5] Loading SVD Model...")
+        svd = get_svd_model()
+        try:
+            svd.load()
+            logger.info(f"  PASS SVD | users={len(svd.user_mapping)} | items={len(svd.item_mapping)}")
+        except Exception as e:
+            logger.error(f"  FAIL SVD: {e}")
+            if settings.enable_svd:
+                raise
+        
+        # 3. Load Item-Item Similarity
+        logger.info("[3/5] Loading Item-Item Similarity...")
+        similarity = get_similarity_model()
+        try:
+            similarity.load()
+            logger.info(f"  PASS Similarity | items={len(similarity.similarity_dict)}")
+        except Exception as e:
+            logger.error(f"  FAIL Similarity: {e}")
+            if settings.enable_item_similarity:
+                raise
+        
+        # 4. Load Popularity Baseline
+        logger.info("[4/5] Loading Popularity Baseline...")
+        popularity = get_popularity_model()
+        try:
+            popularity.load()
+            logger.info(f"  PASS Popularity | items={len(popularity.popularity_scores)}")
+        except Exception as e:
+            logger.error(f"  FAIL Popularity: {e}")
+            raise
+        
+        # 5. Load Feature Tables
+        logger.info("[5/5] Loading Feature Tables...")
         feature_loader = get_feature_loader()
+        logger.info(f"  PASS Features | users={len(feature_loader.user_features) if feature_loader.user_features is not None else 0} | items={len(feature_loader.item_features) if feature_loader.item_features is not None else 0}")
         
         # Connect to database
-        logger.info("Connecting to database...")
+        logger.info("="*70)
+        logger.info("DATABASE CONNECTION")
+        logger.info("="*70)
         mapper = get_latent_mapper()
         await mapper.connect()
+        logger.info(f"  PASS Database connected")
         
-        logger.info(f"{settings.service_name} started successfully on port {settings.service_port}")
+        logger.info("="*70)
+        logger.info(f"STARTUP COMPLETE - {settings.service_name}")
+        logger.info(f"Port: {settings.service_port}")
+        logger.info("="*70)
     
     except Exception as e:
         logger.error(f"Failed to start service: {e}", exc_info=True)

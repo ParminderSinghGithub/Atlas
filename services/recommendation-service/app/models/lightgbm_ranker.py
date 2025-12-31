@@ -101,6 +101,14 @@ _ranker_instance: Optional[LightGBMRanker] = None
 
 
 def get_ranker() -> LightGBMRanker:
+    """Get or create global LightGBM ranker instance."""
+    global _ranker_instance
+    if _ranker_instance is None:
+        _ranker_instance = LightGBMRanker()
+    return _ranker_instance
+
+
+def get_ranker() -> LightGBMRanker:
     """
     Get or create global LightGBM ranker instance.
     

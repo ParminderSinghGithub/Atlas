@@ -62,7 +62,8 @@ class LatentMapper:
     async def map_to_catalog(
         self,
         retailrocket_item_ids: List[int],
-        confidence_threshold: float = None
+        confidence_threshold: float = None,
+        preserve_ids: bool = False
     ) -> List[UUID]:
         """
         Translate RetailRocket IDs to catalog UUIDs.
@@ -70,9 +71,11 @@ class LatentMapper:
         Args:
             retailrocket_item_ids: List of RetailRocket item IDs (int or str convertible)
             confidence_threshold: Minimum confidence score (default from config)
+            preserve_ids: If True, return list of tuples (UUID, retailrocket_id)
         
         Returns:
             List of catalog product UUIDs (may be shorter if some IDs unmapped)
+            If preserve_ids=True: List of (UUID, retailrocket_id) tuples
         
         Why confidence threshold:
         - Low confidence = weak mapping (e.g., random assignment)
@@ -114,18 +117,27 @@ class LatentMapper:
                 uuid_map = {row['latent_item_id']: row['product_id'] for row in rows}
                 logger.info(f"UUID map size: {len(uuid_map)}")
                 
-                catalog_uuids = [
-                    uuid_map[item_id] 
-                    for item_id in int_ids  # Use int_ids to match uuid_map keys
-                    if item_id in uuid_map
-                ]
+                if preserve_ids:
+                    # Return tuples of (UUID, retailrocket_id) to preserve score mapping
+                    catalog_results = [
+                        (uuid_map[item_id], item_id)
+                        for item_id in int_ids
+                        if item_id in uuid_map
+                    ]
+                else:
+                    # Return just UUIDs
+                    catalog_results = [
+                        uuid_map[item_id] 
+                        for item_id in int_ids  # Use int_ids to match uuid_map keys
+                        if item_id in uuid_map
+                    ]
                 
                 logger.info(
-                    f"Mapped {len(catalog_uuids)}/{len(int_ids)} items | "
+                    f"Mapped {len(catalog_results)}/{len(int_ids)} items | "
                     f"confidence>={confidence_threshold}"
                 )
                 
-                return catalog_uuids
+                return catalog_results
         
         except Exception as e:
             logger.error(f"Latent mapping query failed: {e}")
