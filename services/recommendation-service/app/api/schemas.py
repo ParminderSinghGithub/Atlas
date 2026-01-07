@@ -49,9 +49,16 @@ class RecommendedProduct(BaseModel):
     score: float = Field(..., description="Recommendation score (higher = better)")
     rank: int = Field(..., description="Rank in recommendation list (1-indexed)")
     
+    # Product metadata
+    name: Optional[str] = Field(None, description="Product name")
+    price: Optional[float] = Field(None, description="Product price")
+    category_name: Optional[str] = Field(None, description="Category name")
+    
     # Optional explainability fields
     reason: Optional[str] = Field(None, description="Why this product was recommended")
     confidence: Optional[float] = Field(None, description="Mapping confidence score")
+    pipeline_stage: Optional[str] = Field(None, description="Pipeline stage that generated this recommendation")
+    session_boosted: Optional[bool] = Field(None, description="Whether session signals boosted this item")
 
 
 class RecommendationResponse(BaseModel):
@@ -59,11 +66,16 @@ class RecommendationResponse(BaseModel):
     Response schema for recommendations endpoint.
     
     Always returns a response (never empty unless catalog empty).
+    Includes explainability metadata when requested.
     """
     recommendations: List[RecommendedProduct] = Field(..., description="Ranked list of recommendations")
     strategy_used: str = Field(..., description="Strategy used (svd, similarity, popularity)")
     total_candidates: int = Field(..., description="Number of candidates before filtering")
     total_returned: int = Field(..., description="Number of recommendations returned")
+    
+    # Explainability metadata
+    pipeline_explanation: Optional[dict] = Field(None, description="Pipeline stage explanations")
+    session_reranking: Optional[dict] = Field(None, description="Session re-ranking metadata")
     
     class Config:
         schema_extra = {
@@ -89,3 +101,18 @@ class HealthResponse(BaseModel):
     status: str = Field(..., description="Service status")
     models_loaded: dict = Field(..., description="Model availability status")
     database_connected: bool = Field(..., description="Database connection status")
+
+
+class SessionTrackRequest(BaseModel):
+    """Request to track session event."""
+    user_id: str = Field(..., description="User identifier")
+    event_type: str = Field(..., description="Event type: 'category_view' or 'product_view'")
+    category_slug: Optional[str] = Field(None, description="Category slug (for category_view)")
+    product_id: Optional[UUID] = Field(None, description="Product UUID (for product_view)")
+
+
+class SessionTrackResponse(BaseModel):
+    """Response for session tracking."""
+    success: bool = Field(..., description="Whether tracking succeeded")
+    message: str = Field(..., description="Status message")
+

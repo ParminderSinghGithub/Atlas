@@ -1,4 +1,5 @@
 docs
+tests
 # -------------------------
 # Core OS & Editor files
 # -------------------------
@@ -98,11 +99,25 @@ notebooks/artifacts/models/*.pth
 notebooks/artifacts/models/*.pt
 
 # -------------------------
-# Personal Interview Prep Docs
+# Personal Interview Prep Docs & Documentation
 # (Internal only - not for public repo)
 # -------------------------
-TESTING_REPORT.md
-CHALLENGES_AND_SOLUTIONS.md
-IMPLEMENTATION_REPORT.md
-API_TESTING_GUIDE.md
-tests
+*.md
+!LICENSE.md
+!README_ORIGINAL.md
+
+# -------------------------
+# Large Data Files & Artifacts
+# -------------------------
+data/
+*.jsonl
+*.jsonl.gz
+tools/seed-data/*.json
+!tools/seed-data/.gitkeep
+notebooks/artifacts/external/**/*.csv
+
+# -------------------------
+# Test/Temporary Virtual Environments
+# -------------------------
+venv-tests/
+tools/amazon-integration/venv/

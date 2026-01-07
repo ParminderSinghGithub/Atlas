@@ -116,11 +116,15 @@ class PopularityModel:
             
             # Create popularity series
             if id_col:
+                # Convert product_id to int for consistent typing with latent_item_id
+                item_features_copy = item_features.copy()
+                item_features_copy[id_col] = item_features_copy[id_col].astype(int)
                 self.popularity_scores = (
-                    item_features
+                    item_features_copy
                     .set_index(id_col)[popularity_col]
                     .sort_values(ascending=False)
                 )
+                logger.info(f"Using {id_col} as index (converted to int) | min={self.popularity_scores.index.min()} | max={self.popularity_scores.index.max()}")
             else:
                 self.popularity_scores = (
                     item_features[popularity_col]
@@ -133,15 +137,21 @@ class PopularityModel:
             logger.error(f"Failed to generate popularity baseline: {e}")
             self.popularity_scores = pd.Series(dtype=float)
     
-    def get_top_k(self, k: int = 100) -> List[int]:
+    def get_top_k(self, k: int = 100, valid_ids: Optional[List[int]] = None) -> List[int]:
         """
         Get top-K popular items.
         
         Args:
             k: Number of items to return
+            valid_ids: Optional list of valid item IDs to filter by (for catalog mapping)
         
         Returns:
             List of RetailRocket item IDs
+        
+        Why valid_ids filtering:
+        - Popularity baseline has 235K items from retailrocket
+        - Only ~2K items have catalog UUID mappings
+        - Filter ensures we only recommend mapped items
         """
         if self.popularity_scores is None:
             self.load()
@@ -150,8 +160,19 @@ class PopularityModel:
             logger.warning("Popularity scores empty")
             return []
         
+        # Filter by valid IDs if provided
+        scores_to_use = self.popularity_scores
+        if valid_ids is not None:
+            valid_set = set(valid_ids)
+            scores_to_use = self.popularity_scores[self.popularity_scores.index.isin(valid_set)]
+            logger.info(f"Filtered popularity to {len(scores_to_use)}/{len(self.popularity_scores)} valid mapped items")
+            
+            if len(scores_to_use) == 0:
+                logger.warning("No valid mapped items in popularity baseline")
+                return []
+        
         # Return top-K item IDs
-        top_items = self.popularity_scores.nlargest(min(k, len(self.popularity_scores)))
+        top_items = scores_to_use.nlargest(min(k, len(scores_to_use)))
         return [int(item_id) for item_id in top_items.index]
     
     def is_available(self) -> bool:

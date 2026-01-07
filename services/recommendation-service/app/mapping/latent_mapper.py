@@ -195,6 +195,41 @@ class LatentMapper:
             logger.error(f"Latent mapping with metadata failed: {e}")
             return []
     
+    async def get_valid_latent_ids(self, confidence_threshold: float = None) -> List[int]:
+        """
+        Get all latent item IDs that have catalog mappings.
+        
+        Args:
+            confidence_threshold: Minimum confidence score (default from config)
+        
+        Returns:
+            List of latent item IDs that can be safely recommended
+        
+        Why needed:
+        - Popularity model has 235K items from retailrocket
+        - Only ~2K items have catalog mappings
+        - Need to filter recommendations to mapped items only
+        """
+        if self.pool is None:
+            await self.connect()
+        
+        confidence_threshold = confidence_threshold or settings.confidence_threshold
+        
+        try:
+            async with self.pool.acquire() as conn:
+                query = """
+                    SELECT latent_item_id
+                    FROM latent_item_mappings
+                    WHERE confidence_score >= $1
+                """
+                rows = await conn.fetch(query, confidence_threshold)
+                valid_ids = [row['latent_item_id'] for row in rows]
+                logger.info(f"Found {len(valid_ids)} valid latent IDs with confidence >= {confidence_threshold}")
+                return valid_ids
+        except Exception as e:
+            logger.error(f"Failed to fetch valid latent IDs: {e}")
+            return []
+    
     async def close(self):
         """Close database connection pool."""
         if self.pool:

@@ -10,12 +10,15 @@ from typing import Optional, List, Dict, Any
 from uuid import UUID
 import time
 import numpy as np
+import httpx
 
 from app.api.schemas import (
     RecommendationRequest,
     RecommendationResponse,
     RecommendedProduct,
-    HealthResponse
+    HealthResponse,
+    SessionTrackRequest,
+    SessionTrackResponse
 )
 from app.models.svd import get_svd_model
 from app.models.popularity import get_popularity_model
@@ -23,6 +26,7 @@ from app.models.lightgbm_ranker import get_ranker
 from app.models.similarity import get_similarity_model
 from app.features.loader import get_feature_loader
 from app.mapping.latent_mapper import get_latent_mapper
+from app.session.reranker import get_session_reranker
 from app.decisioning.rules import apply_all_rules
 from app.core.config import settings
 from app.core.logging import get_logger, log_request, log_fallback
@@ -36,30 +40,56 @@ async def fetch_product_metadata(product_ids: List[UUID]) -> Dict[UUID, Dict[str
     Fetch product metadata from catalog service.
     
     Why needed:
+    - Product names and prices for frontend display
     - Stock filtering (stock_quantity)
     - Diversity constraint (category_id)
     - Inactive filtering (is_deleted)
-    
-    Production: This would call catalog-service API
-    For now: Return mock data (TODO: implement catalog client)
     """
-    # TODO: Replace with actual HTTP call to catalog-service
-    # async with httpx.AsyncClient() as client:
-    #     response = await client.post(
-    #         "http://catalog-service:5004/api/v1/catalog/products/batch",
-    #         json={"product_ids": [str(pid) for pid in product_ids]}
-    #     )
-    #     return response.json()
+    if not product_ids:
+        return {}
     
-    # Mock metadata (all products in stock, not deleted, random categories)
-    return {
-        pid: {
-            'stock_quantity': 10,
-            'is_deleted': False,
-            'category_id': hash(pid) % 10  # Mock category distribution
+    try:
+        # Call catalog service through API gateway
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            # Fetch products individually (catalog doesn't have batch endpoint)
+            metadata = {}
+            for pid in product_ids:
+                try:
+                    response = await client.get(
+                        f"http://catalog-service:5004/api/v1/catalog/products/{pid}"
+                    )
+                    if response.status_code == 200:
+                        product_data = response.json()
+                        metadata[pid] = {
+                            'name': product_data.get('name', ''),
+                            'price': product_data.get('price', 0),
+                            'category_name': product_data.get('category_name', ''),
+                            'stock_quantity': 10,  # Mock for now
+                            'is_deleted': False,
+                            'category_id': product_data.get('category_id', '')
+                        }
+                    else:
+                        logger.warning(f"Failed to fetch product {pid}: HTTP {response.status_code}")
+                except Exception as e:
+                    logger.warning(f"Error fetching product {pid}: {e}")
+                    continue
+            
+            logger.info(f"Fetched metadata for {len(metadata)}/{len(product_ids)} products")
+            return metadata
+            
+    except Exception as e:
+        logger.error(f"Failed to fetch product metadata: {e}")
+        # Fallback to mock data
+        return {
+            pid: {
+                'name': '',
+                'price': 0,
+                'stock_quantity': 10,
+                'is_deleted': False,
+                'category_id': hash(pid) % 10
+            }
+            for pid in product_ids
         }
-        for pid in product_ids
-    }
 
 
 @router.get("/api/v1/recommendations", response_model=RecommendationResponse)
@@ -97,11 +127,63 @@ async def get_recommendations(
     
     try:
         # Step 1: Candidate Generation
-        strategy_used, retailrocket_ids = await generate_candidates(
+        candidate_result = await generate_candidates(
             user_id=user_id,
             product_id=product_id,
             k=settings.candidate_pool_size
         )
+        
+        # Handle different return formats
+        if len(candidate_result) == 3:
+            # Category-based similarity returns (strategy, uuids, True)
+            strategy_used, catalog_uuids, skip_mapping = candidate_result
+            logger.info(f"Candidate generation (direct UUIDs): strategy={strategy_used}, count={len(catalog_uuids) if catalog_uuids else 0}")
+            
+            if not catalog_uuids:
+                logger.warning("No candidates generated, returning empty recommendations")
+                return RecommendationResponse(
+                    recommendations=[],
+                    strategy_used=strategy_used,
+                    total_candidates=0,
+                    total_returned=0
+                )
+            
+            # Skip feature assembly, ranking, and mapping - go straight to metadata
+            product_metadata = await fetch_product_metadata(catalog_uuids[:k])
+            
+            # Build recommendations with mock scores
+            recommendations = [
+                RecommendedProduct(
+                    product_id=pid,
+                    score=1.0 - (rank * 0.1),  # Descending scores
+                    rank=rank + 1,
+                    name=product_metadata.get(pid, {}).get('name'),
+                    price=product_metadata.get(pid, {}).get('price'),
+                    category_name=product_metadata.get(pid, {}).get('category_name'),
+                    reason=f"Recommended via {strategy_used}" if include_metadata else None,
+                    confidence=1.0 if include_metadata else None
+                )
+                for rank, pid in enumerate(catalog_uuids[:k])
+            ]
+            
+            latency_ms = (time.time() - start_time) * 1000
+            log_request(
+                logger,
+                "/api/v1/recommendations",
+                {"user_id": str(user_id), "product_id": str(product_id), "k": k},
+                latency_ms
+            )
+            
+            return RecommendationResponse(
+                recommendations=recommendations,
+                strategy_used=strategy_used,
+                total_candidates=len(catalog_uuids),
+                total_returned=len(recommendations)
+            )
+        else:
+            # Normal flow: (strategy, retailrocket_ids)
+            strategy_used, retailrocket_ids = candidate_result
+        
         logger.info(f"Candidate generation complete: strategy={strategy_used}, count={len(retailrocket_ids) if retailrocket_ids else 0}")
         
         if not retailrocket_ids:
@@ -240,12 +322,15 @@ async def get_recommendations(
         # Step 7: Top-K Selection
         final_products_with_scores = filtered_products_with_scores[:k]
         
-        # Build response with real LightGBM scores
+        # Build response with real LightGBM scores and product metadata
         recommendations = [
             RecommendedProduct(
                 product_id=pid,
                 score=score,  # Use actual LightGBM scores
                 rank=rank + 1,
+                name=product_metadata.get(pid, {}).get('name'),
+                price=product_metadata.get(pid, {}).get('price'),
+                category_name=product_metadata.get(pid, {}).get('category_name'),
                 reason=f"Recommended via {strategy_used}" if include_metadata else None,
                 confidence=0.85 if include_metadata else None  # TODO: Use actual mapping confidence
             )
@@ -299,11 +384,41 @@ async def generate_candidates(
     if product_id is not None:
         logger.info(f"Product-based recommendations requested for {product_id}")
         
-        # Try to convert product_id to RetailRocket item ID via reverse mapping
-        # For now, assume product_id is already a RetailRocket ID if it's an integer
+        # Try to get product metadata first to extract category
         try:
-            # TODO: Implement reverse catalog→latent lookup in mapper
-            # For now, treat string product_ids as RetailRocket IDs
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    f"http://catalog-service:5004/api/v1/catalog/products/{product_id}"
+                )
+                if response.status_code == 200:
+                    product_data = response.json()
+                    category_id = product_data.get('category', {}).get('id') if isinstance(product_data.get('category'), dict) else None
+                    
+                    if category_id:
+                        logger.info(f"Product {product_id} belongs to category {category_id}, using category-based recommendations")
+                        # Get products from same category as fallback
+                        category_response = await client.get(
+                            f"http://catalog-service:5004/api/v1/catalog/products",
+                            params={"category_id": category_id, "per_page": k * 3}  # Get more than needed
+                        )
+                        if category_response.status_code == 200:
+                            category_products = category_response.json().get('products', [])
+                            # Extract UUIDs, filter out the current product
+                            similar_uuids = [
+                                UUID(p['id']) for p in category_products 
+                                if p['id'] != str(product_id)
+                            ][:k]
+                            
+                            if similar_uuids:
+                                logger.info(f"Found {len(similar_uuids)} products in same category")
+                                # Return as if they came from similarity model
+                                # We'll bypass the latent mapping since we already have UUIDs
+                                return ("category_similarity", similar_uuids, True)  # True = already UUIDs
+        except Exception as e:
+            logger.warning(f"Failed to fetch category for product {product_id}: {e}")
+        
+        # Original similarity model attempt
+        try:
             retailrocket_id = int(product_id) if isinstance(product_id, (int, str)) and str(product_id).isdigit() else None
             
             if retailrocket_id:
@@ -317,7 +432,9 @@ async def generate_candidates(
                         popularity_model = get_popularity_model()
                         if not popularity_model.is_available():
                             popularity_model.load()
-                        return ("popularity", popularity_model.get_top_k(k))
+                        mapper = get_latent_mapper()
+                        valid_ids = await mapper.get_valid_latent_ids()
+                        return ("popularity", popularity_model.get_top_k(k, valid_ids=valid_ids))
                 
                 similar_items = similarity_model.get_similar_items(retailrocket_id, k)
                 if similar_items:
@@ -352,7 +469,9 @@ async def generate_candidates(
                 popularity_model = get_popularity_model()
                 if not popularity_model.is_available():
                     popularity_model.load()
-                return ("popularity", popularity_model.get_top_k(k))
+                mapper = get_latent_mapper()
+                valid_ids = await mapper.get_valid_latent_ids()
+                return ("popularity", popularity_model.get_top_k(k, valid_ids=valid_ids))
         
         # Generate candidates using SVD
         candidates = svd_model.get_candidates(user_id, k)
@@ -368,7 +487,13 @@ async def generate_candidates(
     popularity_model = get_popularity_model()
     if not popularity_model.is_available():
         popularity_model.load()
-    return ("popularity", popularity_model.get_top_k(k))
+    
+    # Fetch valid latent IDs that have catalog mappings
+    mapper = get_latent_mapper()
+    valid_ids = await mapper.get_valid_latent_ids()
+    logger.info(f"Fetched {len(valid_ids)} valid mapped latent IDs for popularity filtering")
+    
+    return ("popularity", popularity_model.get_top_k(k, valid_ids=valid_ids))
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -413,4 +538,60 @@ async def health_check():
             status="unhealthy",
             models_loaded={},
             database_connected=False
+        )
+
+
+@router.post("/api/v1/session/track", response_model=SessionTrackResponse)
+async def track_session_event(request: SessionTrackRequest):
+    """
+    Track user session event for intent-aware recommendations.
+    
+    Events:
+    - category_view: User browsing a category
+    - product_view: User viewing a product
+    
+    Signals are used for session-aware re-ranking.
+    """
+    try:
+        reranker = await get_session_reranker(settings.redis_url if settings.redis_enabled else None)
+        
+        if not reranker.enabled:
+            return SessionTrackResponse(
+                success=False,
+                message="Session tracking disabled (Redis not available)"
+            )
+        
+        if request.event_type == "category_view":
+            if not request.category_slug:
+                raise HTTPException(status_code=400, detail="category_slug required for category_view")
+            
+            await reranker.track_category_view(request.user_id, request.category_slug)
+            return SessionTrackResponse(
+                success=True,
+                message=f"Tracked category view: {request.category_slug}"
+            )
+        
+        elif request.event_type == "product_view":
+            if not request.product_id:
+                raise HTTPException(status_code=400, detail="product_id required for product_view")
+            
+            await reranker.track_product_view(request.user_id, request.product_id)
+            return SessionTrackResponse(
+                success=True,
+                message=f"Tracked product view: {request.product_id}"
+            )
+        
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid event_type: {request.event_type}"
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Session tracking failed: {e}")
+        return SessionTrackResponse(
+            success=False,
+            message=f"Tracking failed: {str(e)}"
         )

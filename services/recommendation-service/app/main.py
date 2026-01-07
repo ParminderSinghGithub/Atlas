@@ -23,6 +23,7 @@ from app.models.popularity import get_popularity_model
 from app.models.similarity import get_similarity_model
 from app.features.loader import get_feature_loader
 from app.mapping.latent_mapper import get_latent_mapper
+from app.session.reranker import get_session_reranker
 
 # Setup logging
 setup_logging()
@@ -105,6 +106,16 @@ async def lifespan(app: FastAPI):
         mapper = get_latent_mapper()
         await mapper.connect()
         logger.info(f"  PASS Database connected")
+        
+        # Initialize session reranker
+        logger.info("="*70)
+        logger.info("SESSION TRACKING")
+        logger.info("="*70)
+        if settings.redis_enabled:
+            reranker = await get_session_reranker(settings.redis_url)
+            logger.info(f"  PASS Session tracking enabled")
+        else:
+            logger.info(f"  SKIP Session tracking disabled (set REDIS_ENABLED=true to enable)")
         
         logger.info("="*70)
         logger.info(f"STARTUP COMPLETE - {settings.service_name}")
