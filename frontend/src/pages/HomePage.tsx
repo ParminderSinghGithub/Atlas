@@ -63,14 +63,14 @@ export const HomePage: React.FC = () => {
   };
 
   return (
-    <div className="container mx-auto px-6 py-8">
+    <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
       {/* Hero Section with Recommendations */}
-      <section className="mb-12">
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-8 mb-8">
-          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+      <section className="mb-8 sm:mb-12">
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 sm:p-8 mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             Personalized Recommendations
           </h1>
-          <p className="text-gray-600">Personalized using historical behavior and recent session activity</p>
+          <p className="text-sm sm:text-base text-gray-600">Personalized using historical behavior and recent session activity</p>
         </div>
         
         {loadingRecs ? (
@@ -96,7 +96,7 @@ export const HomePage: React.FC = () => {
                 <span className="text-gray-500">{recommendations.length} items</span>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
               {recommendations.slice(0, 8).map((rec) => (
                 <Link
                   key={rec.product_id}
@@ -158,7 +158,7 @@ export const HomePage: React.FC = () => {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
               {currentProducts.map((product) => (
                 <Link
                   key={product.id}

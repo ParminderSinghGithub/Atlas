@@ -92,20 +92,20 @@ export const ProductDetailPage: React.FC = () => {
   }
 
   return (
-    <div className="container mx-auto px-4">
+    <div className="container mx-auto px-4 sm:px-6">
       {/* Toast Notification */}
       {showToast && (
-        <div className="fixed top-20 right-8 z-50 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-fade-in">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+        <div className="fixed top-20 right-4 sm:right-8 z-50 bg-green-500 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg shadow-lg flex items-center gap-2 animate-fade-in">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
           </svg>
-          Added to cart successfully!
+          <span className="text-sm sm:text-base">Added to cart successfully!</span>
         </div>
       )}
 
       {/* Product Details */}
-      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-        <h1 className="text-3xl font-bold mb-4">{product.name}</h1>
+      <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-6 sm:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold mb-4">{product.name}</h1>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -165,7 +165,7 @@ export const ProductDetailPage: React.FC = () => {
             <div className="text-sm text-gray-500 mb-2">
               Strategy: {strategyUsed} | {similarProducts.length} items
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {similarProducts.map((rec) => (
                 <Link
                   key={rec.product_id}
