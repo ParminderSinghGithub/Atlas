@@ -52,6 +52,7 @@ services:
       - SERVICE_PORT=5005
       - REDIS_ENABLED=false
       - ARTIFACTS_PATH=/artifacts
+      - MODEL_VERSION=latest
       - LOG_LEVEL=INFO
     volumes:
       - ../notebooks/artifacts:/artifacts:ro

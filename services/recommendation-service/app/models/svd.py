@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional, List
 import numpy as np
 
-from app.core.config import settings
+from app.core.config import settings, get_model_path
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,7 +31,7 @@ class SVDModel:
     
     def __init__(self):
         self.model = None
-        self.model_path = Path(settings.artifacts_path) / "models" / "svd_model.pkl"
+        self.model_path = get_model_path("svd_model.pkl")
         self.user_mapping: Optional[dict] = None  # user_id → index
         self.item_mapping: Optional[dict] = None  # item_id → index
         self.index_to_item: Optional[dict] = None  # index → item_id (reverse mapping)

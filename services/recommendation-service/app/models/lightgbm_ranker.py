@@ -17,7 +17,7 @@ from typing import Optional, List
 import numpy as np
 import pandas as pd
 
-from app.core.config import settings
+from app.core.config import settings, get_model_path
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,7 +35,7 @@ class LightGBMRanker:
     
     def __init__(self):
         self.model: Optional[lgb.Booster] = None
-        self.model_path = Path(settings.artifacts_path) / "models" / "lightgbm_ranker.txt"
+        self.model_path = get_model_path("lightgbm_ranker.txt")
         self.feature_names: Optional[List[str]] = None
     
     def load(self):

@@ -6,10 +6,12 @@ Environment variables:
 - REDIS_URL: Redis connection (optional)
 - REDIS_ENABLED: Enable Redis caching (default: false)
 - ARTIFACTS_PATH: Path to ML artifacts (default: /artifacts)
+- MODEL_VERSION: Model version to load (default: latest)
 - LOG_LEVEL: Logging level (default: INFO)
 """
 from pydantic_settings import BaseSettings
 from typing import Optional
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -30,6 +32,7 @@ class Settings(BaseSettings):
     
     # ML Artifacts
     artifacts_path: str = "/artifacts"  # Mounted from notebooks/artifacts/
+    model_version: str = "latest"  # Model version subdirectory
     
     # Recommendation Parameters
     candidate_pool_size: int = 100  # Initial candidates before ranking
@@ -55,3 +58,27 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+
+def get_model_path(filename: str) -> Path:
+    """
+    Resolve versioned model path with backward compatibility.
+    
+    Args:
+        filename: Model filename (e.g., 'svd_model.pkl')
+    
+    Returns:
+        Path to model file
+    
+    Resolution order:
+    1. /artifacts/models/{model_version}/{filename}
+    2. /artifacts/models/{filename} (legacy fallback)
+    """
+    # Try versioned path first
+    versioned_path = Path(settings.artifacts_path) / "models" / settings.model_version / filename
+    if versioned_path.exists():
+        return versioned_path
+    
+    # Fallback to legacy path
+    legacy_path = Path(settings.artifacts_path) / "models" / filename
+    return legacy_path

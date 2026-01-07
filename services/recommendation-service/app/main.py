@@ -99,6 +99,10 @@ async def lifespan(app: FastAPI):
         feature_loader = get_feature_loader()
         logger.info(f"  PASS Features | users={len(feature_loader.user_features) if feature_loader.user_features is not None else 0} | items={len(feature_loader.item_features) if feature_loader.item_features is not None else 0}")
         
+        logger.info("="*70)
+        logger.info(f"Loaded models from version: {settings.model_version}")
+        logger.info("="*70)
+        
         # Connect to database
         logger.info("="*70)
         logger.info("DATABASE CONNECTION")

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional, List, Dict
 import numpy as np
 
-from app.core.config import settings
+from app.core.config import settings, get_model_path
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,7 +31,7 @@ class SimilarityModel:
     
     def __init__(self):
         self.similarity_dict: Optional[Dict[str, Dict[str, float]]] = None
-        self.model_path = Path(settings.artifacts_path) / "models" / "item_similarity.pkl"
+        self.model_path = get_model_path("item_similarity.pkl")
     
     def load(self):
         """

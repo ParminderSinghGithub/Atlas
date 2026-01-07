@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional, List
 import pandas as pd
 
-from app.core.config import settings
+from app.core.config import settings, get_model_path
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -36,7 +36,7 @@ class PopularityModel:
     
     def __init__(self):
         self.popularity_scores: Optional[pd.Series] = None
-        self.model_path = Path(settings.artifacts_path) / "models" / "popularity_baseline.pkl"
+        self.model_path = get_model_path("popularity_baseline.pkl")
     
     def load(self):
         """
