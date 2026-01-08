@@ -29,7 +29,7 @@ from app.mapping.latent_mapper import get_latent_mapper
 from app.session.reranker import get_session_reranker
 from app.decisioning.rules import apply_all_rules
 from app.core.config import settings
-from app.core.logging import get_logger, log_request, log_fallback
+from app.core.logging import get_logger, log_request, log_fallback, log_recommendation
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -174,6 +174,17 @@ async def get_recommendations(
                 "/api/v1/recommendations",
                 {"user_id": str(user_id), "product_id": str(product_id), "k": k},
                 latency_ms
+            )
+            
+            # Log structured recommendation event for monitoring
+            log_recommendation(
+                logger=logger,
+                user_id=user_id,
+                product_id=product_id,
+                strategy_used=strategy_used,
+                model_version=getattr(settings, 'model_version', 'unknown'),
+                recommended_items=catalog_uuids[:k],
+                latency_ms=latency_ms
             )
             
             return RecommendationResponse(
@@ -346,6 +357,17 @@ async def get_recommendations(
             "/api/v1/recommendations",
             {"user_id": str(user_id), "product_id": str(product_id), "k": k},
             latency_ms
+        )
+        
+        # Log structured recommendation event for monitoring
+        log_recommendation(
+            logger=logger,
+            user_id=user_id,
+            product_id=product_id,
+            strategy_used=strategy_used,
+            model_version=getattr(settings, 'model_version', 'unknown'),
+            recommended_items=[pid for pid, _ in final_products_with_scores],
+            latency_ms=latency_ms
         )
         
         return RecommendationResponse(
