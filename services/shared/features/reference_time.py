@@ -43,7 +43,14 @@ def get_reference_time(
         return explicit_reference_time
     
     # Infer from data: use latest event timestamp
-    if 'ts_datetime' not in events_df.columns:
-        raise ValueError("events_df must have 'ts_datetime' column")
+    # Check for common timestamp column names
+    if 'ts_datetime' in events_df.columns:
+        ts_col = 'ts_datetime'
+    elif 'ts' in events_df.columns:
+        ts_col = 'ts'
+    elif 'timestamp' in events_df.columns:
+        ts_col = 'timestamp'
+    else:
+        raise ValueError("events_df must have 'ts', 'ts_datetime', or 'timestamp' column")
     
-    return events_df['ts_datetime'].max()
+    return events_df[ts_col].max()

@@ -1,0 +1,160 @@
+# Atlas Recommendation System - Training Pipeline Configuration
+# This configuration file drives the scripted training pipeline
+# All parameters are extracted from notebooks/03_feature_engineering.ipynb and notebooks/04_model_training.ipynb
+
+# ===========================
+# Data Configuration
+# ===========================
+data:
+  # Data mode: "retailrocket" (production), "synthetic" (testing), "merged" (quick iteration)
+  mode: "retailrocket"
+  
+  # Input paths (relative to project root)
+  retailrocket_events: "notebooks/artifacts/external/retailrocket/events.parquet"
+  synthetic_events_dir: "notebooks/artifacts/events"
+  merged_events: "notebooks/artifacts/combined/events.parquet"
+  
+  # Output paths
+  ingested_events: "training/artifacts/events/events.parquet"
+
+# ===========================
+# Feature Engineering
+# ===========================
+features:
+  # Output directory for feature artifacts
+  output_dir: "training/artifacts/features"
+  
+  # Reference time policy: "explicit" (use reference_time below) or "inferred" (max timestamp from data)
+  reference_time_policy: "inferred"
+  reference_time: null  # Set to ISO timestamp for explicit mode (e.g., "2015-05-01T00:00:00")
+  
+  # Feature output files
+  user_features_file: "user_features.parquet"
+  item_features_file: "item_features.parquet"
+  interaction_features_file: "interaction_features.parquet"
+  
+  # Metadata output
+  feature_metadata_file: "feature_metadata.json"
+
+# ===========================
+# Model Training Configuration
+# ===========================
+training:
+  # Train/validation split (time-based)
+  split:
+    method: "temporal"  # Use temporal split to avoid data leakage
+    train_percentile: 80  # 80% oldest data for training, 20% newest for validation
+  
+  # Label engineering
+  labels:
+    # Map event types to relevance scores
+    view: 1
+    add_to_cart: 2
+    purchase: 3
+
+# ===========================
+# Model Hyperparameters
+# ===========================
+models:
+  # SVD (Collaborative Filtering)
+  svd:
+    enabled: true
+    n_components: 10
+    random_state: 42
+    output_file: "svd_model.pkl"
+  
+  # Item-Item Similarity
+  item_similarity:
+    enabled: true
+    max_session_size: 50  # Skip sessions larger than this to prevent O(n^2) explosion
+    min_covisits: 2  # Minimum co-visits to consider a relationship
+    output_file: "item_similarity.pkl"
+  
+  # LightGBM Ranker
+  lightgbm:
+    enabled: true
+    objective: "lambdarank"
+    metric: "ndcg"
+    ndcg_eval_at: [10]
+    learning_rate: 0.05
+    num_leaves: 31
+    feature_fraction: 0.8
+    bagging_fraction: 0.8
+    bagging_freq: 5
+    verbose: -1
+    seed: 42
+    num_boost_round: 100
+    output_file: "lightgbm_ranker.txt"
+    
+    # Feature columns to exclude from training
+    exclude_columns:
+      - "user_id"
+      - "product_id"
+      - "last_interaction_ts"
+      - "user_last_event_ts"
+      - "item_last_interaction_ts"
+      - "relevance"
+
+# ===========================
+# Evaluation Configuration
+# ===========================
+evaluation:
+  # Evaluation metrics
+  metrics:
+    - "ndcg@10"
+    - "recall@10"
+    - "precision@10"
+  
+  # Maximum users to evaluate (for speed)
+  max_eval_users: 5000
+  
+  # Two-stage pipeline configuration
+  two_stage:
+    k_candidates: 50  # Number of candidates from Stage 1
+    k_final: 10  # Final recommendations after re-ranking
+    candidate_sources:
+      - "svd"
+      - "item_item"
+    # Note: Popularity available at serving, not versioned as model artifact
+  
+  # Metric regression tolerance (fail if metrics drop more than this)
+  regression_tolerance:
+    ndcg@10: 0.05  # Allow 5% drop
+    recall@10: 0.05
+    precision@10: 0.05
+  
+  # Comparison baseline file (previous production model)
+  baseline_metrics_file: null  # Set to path of previous run_summary.json for comparison
+
+# ===========================
+# Artifact Versioning
+# ===========================
+artifacts:
+  # Output directory for all models (supports versioning)
+  models_dir: "notebooks/artifacts/models"
+  
+  # Model version (set via --model-version CLI flag or defaults to timestamp)
+  version: null  # Auto-generated if null (format: YYYYMMDD_HHMMSS)
+  
+  # Metadata files
+  metadata_file: "model_metadata.json"
+  comparison_file: "model_comparison.csv"
+  feature_importance_file: "feature_importance.csv"
+  run_summary_file: "run_summary.json"
+  two_stage_metrics_file: "two_stage_metrics.json"
+
+# ===========================
+# Execution Configuration
+# ===========================
+execution:
+  # Random seed for reproducibility
+  random_seed: 42
+  
+  # Logging level
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  
+  # Git integration (capture commit hash for reproducibility)
+  capture_git_hash: true
+  
+  # Checksum validation (verify data hasn't changed between runs)
+  validate_checksums: true

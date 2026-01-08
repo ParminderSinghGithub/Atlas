@@ -98,6 +98,10 @@ notebooks/artifacts/models/*.joblib
 notebooks/artifacts/models/*.pth
 notebooks/artifacts/models/*.pt
 
+# Training pipeline artifacts (intermediate files only, not scripts)
+training/artifacts/
+training/venv/
+
 # -------------------------
 # Personal Interview Prep Docs & Documentation
 # (Internal only - not for public repo)

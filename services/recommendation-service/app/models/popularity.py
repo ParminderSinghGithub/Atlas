@@ -46,7 +46,7 @@ class PopularityModel:
         - pd.Series with index=retailrocket_item_id, values=popularity_score
         - Sorted by score descending
         
-        Fallback: If popularity_baseline.pkl missing, generate from item_features.parquet
+        Fallback: If popularity_scores.pkl missing, generate from item_features.parquet
         """
         if self.popularity_scores is not None:
             return  # Already loaded
