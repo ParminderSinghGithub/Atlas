@@ -53,6 +53,7 @@ class RecommendedProduct(BaseModel):
     name: Optional[str] = Field(None, description="Product name")
     price: Optional[float] = Field(None, description="Product price")
     category_name: Optional[str] = Field(None, description="Category name")
+    image_url: Optional[str] = Field(None, description="Product image URL")
     
     # Optional explainability fields
     reason: Optional[str] = Field(None, description="Why this product was recommended")

@@ -85,10 +85,8 @@ export const HomePage: React.FC = () => {
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-800">
-                Recommended For You
-              </h2>
+            {/* Removed redundant "Recommended For You" heading - keeping only strategy badge */}
+            <div className="flex items-center justify-end mb-4">
               <div className="flex items-center gap-2 text-sm">
                 <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">
                   {strategyUsed.replace(/_/g, ' ').toUpperCase()}
@@ -101,34 +99,60 @@ export const HomePage: React.FC = () => {
                 <Link
                   key={rec.product_id}
                   to={`/products/${rec.product_id}`}
-                  className="bg-white rounded-lg shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group border border-gray-200 relative"
+                  className="bg-white rounded-lg shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group border border-gray-200 flex flex-col lg:h-80"
                 >
-                  {rec.image_url && (
-                    <div className="aspect-square bg-gray-100 overflow-hidden">
+                  {/* Image Container - Fixed Height */}
+                  <div className="h-32 flex items-center justify-center bg-gray-50 p-4">
+                    {rec.image_url ? (
                       <img
                         src={rec.image_url}
                         alt={rec.name || 'Product'}
-                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                        className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          e.currentTarget.parentElement!.innerHTML = `
+                            <div class="flex items-center justify-center h-full">
+                              <svg class="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                            </div>
+                          `;
+                        }}
                       />
-                    </div>
-                  )}
-                  <div className="p-4">
-                    <div className="text-sm font-semibold mb-2 truncate text-gray-800">
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Content Container - Flex Grow */}
+                  <div className="flex flex-col flex-1 p-4 pt-3">
+                    {/* Title - 3 lines max */}
+                    <h3 className="text-xs font-medium text-gray-700 line-clamp-3 leading-relaxed mb-3">
                       {rec.name || rec.product_id}
-                    </div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
+                    </h3>
+
+                    {/* Rank and Score - Fixed height for consistent spacing */}
+                    <div className="flex items-center gap-2 mb-3 h-6">
+                      <span className="text-xs bg-purple-50 text-purple-600 px-2.5 py-1 rounded-md">
                         Rank #{rec.rank}
                       </span>
-                      <span className="text-xs text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <span className="text-xs text-gray-500 transition-all duration-300 ease-out opacity-0 group-hover:opacity-100 group-hover:translate-y-[-4px]">
                         Score: {rec.score.toFixed(2)}
                       </span>
                     </div>
-                    {rec.price && (
-                      <div className="text-lg font-bold text-green-600">
-                        ₹{typeof rec.price === 'string' ? parseFloat(rec.price).toFixed(2) : rec.price.toFixed(2)}
-                      </div>
-                    )}
+
+                    {/* Price - Pushed to bottom with margin-top auto */}
+                    <div className="mt-auto">
+                      {rec.price && (
+                        <div className="text-lg font-bold text-green-600">
+                          ₹{typeof rec.price === 'string' ? parseFloat(rec.price).toFixed(2) : rec.price.toFixed(2)}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </Link>
               ))}
@@ -140,7 +164,9 @@ export const HomePage: React.FC = () => {
       {/* Products Grid Section */}
       <section>
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">Browse All Products</h2>
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            Browse All Products
+          </h2>
           <Link 
             to="/products" 
             className="text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"

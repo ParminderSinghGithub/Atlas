@@ -64,6 +64,7 @@ async def fetch_product_metadata(product_ids: List[UUID]) -> Dict[UUID, Dict[str
                             'name': product_data.get('name', ''),
                             'price': product_data.get('price', 0),
                             'category_name': product_data.get('category_name', ''),
+                            'image_url': product_data.get('image_url', ''),
                             'stock_quantity': 10,  # Mock for now
                             'is_deleted': False,
                             'category_id': product_data.get('category_id', '')
@@ -160,6 +161,7 @@ async def get_recommendations(
                     name=product_metadata.get(pid, {}).get('name'),
                     price=product_metadata.get(pid, {}).get('price'),
                     category_name=product_metadata.get(pid, {}).get('category_name'),
+                    image_url=product_metadata.get(pid, {}).get('image_url'),
                     reason=f"Recommended via {strategy_used}" if include_metadata else None,
                     confidence=1.0 if include_metadata else None
                 )
@@ -331,6 +333,7 @@ async def get_recommendations(
                 name=product_metadata.get(pid, {}).get('name'),
                 price=product_metadata.get(pid, {}).get('price'),
                 category_name=product_metadata.get(pid, {}).get('category_name'),
+                image_url=product_metadata.get(pid, {}).get('image_url'),
                 reason=f"Recommended via {strategy_used}" if include_metadata else None,
                 confidence=0.85 if include_metadata else None  # TODO: Use actual mapping confidence
             )
