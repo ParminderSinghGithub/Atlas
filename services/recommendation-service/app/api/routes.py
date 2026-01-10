@@ -335,6 +335,23 @@ async def get_recommendations(
         # Step 7: Top-K Selection
         final_products_with_scores = filtered_products_with_scores[:k]
         
+        # Step 8: Apply Session Re-Ranking (if Redis enabled)
+        if user_id and settings.redis_enabled:
+            try:
+                reranker = await get_session_reranker(settings.redis_url)
+                if reranker.enabled:
+                    logger.info("Applying session-aware re-ranking...")
+                    reranked_candidates, reranked_scores, session_meta = await reranker.apply_session_boost(
+                        user_id=str(user_id),
+                        candidates=[pid for pid, _ in final_products_with_scores],
+                        scores=[score for _, score in final_products_with_scores],
+                        product_metadata=product_metadata
+                    )
+                    final_products_with_scores = list(zip(reranked_candidates, reranked_scores))
+                    logger.info(f"Session re-ranking applied: {session_meta}")
+            except Exception as e:
+                logger.warning(f"Session re-ranking failed, using original ranking: {e}")
+        
         # Build response with real LightGBM scores and product metadata
         recommendations = [
             RecommendedProduct(

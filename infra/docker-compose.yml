@@ -39,7 +39,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/ecommerce
       - SERVICE_PORT=5005
-      - REDIS_ENABLED=false
+      - REDIS_ENABLED=true
+      - REDIS_URL=redis://redis:6379/0
       - ARTIFACTS_PATH=/artifacts
       - MODEL_VERSION=production_v1
       - LOG_LEVEL=INFO
@@ -48,6 +49,7 @@ services:
     depends_on:
       - db
       - catalog-service
+      - redis
     restart: unless-stopped
 
   # ---------- DATABASES ----------

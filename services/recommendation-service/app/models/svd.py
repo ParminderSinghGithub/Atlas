@@ -7,6 +7,12 @@ Why SVD:
 - Fast candidate generation (<5ms for top-100)
 
 Model outputs RetailRocket latent item IDs (must be mapped to catalog UUIDs).
+
+IMPORTANT LIMITATION:
+- Trained on RetailRocket users (integer user IDs)
+- New application users (UUID format) will NOT be in model
+- Expected cold start: ALL new app users fall back to popularity baseline
+- This is CORRECT BEHAVIOR - no fake personalization
 """
 import pickle
 from pathlib import Path
