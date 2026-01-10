@@ -13,23 +13,12 @@ services:
       - redis
     restart: unless-stopped
 
-  product-service:
-    build: ../services/product-service
-    ports:
-      - "5001:5000"
-    environment:
-      - POSTGRES_URI=postgresql://postgres:postgres@db:5432/ecommerce
-    depends_on:
-      - db
-    restart: unless-stopped
-
   api-gateway:
     build: ../services/api-gateway
     ports:
       - "8000:8000"
     depends_on:
       - user-service
-      - product-service
       - catalog-service
 
   catalog-service:
@@ -77,49 +66,6 @@ services:
     image: redis:8
     ports:
       - "6379:6379"
-
-  # ---------- MESSAGE QUEUE ----------
-  kafka:
-    image: apache/kafka:3.7.0
-    ports:
-      - "9092:9092"
-    environment:
-      - KAFKA_NODE_ID=1
-      - KAFKA_PROCESS_ROLES=broker,controller
-      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093
-      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
-      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
-      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
-      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
-      - CLUSTER_ID=5L6g3nShT-eMCtK--X86sw
-
-  # ---------- EVENT PROCESSING ----------
-  event-service:
-    build: ../services/event-service
-    ports:
-      - "5003:5000"
-    environment:
-      - KAFKA_BROKER=kafka:9092
-    depends_on:
-      - kafka
-    restart: unless-stopped
-
-  event-consumer:
-    build: ../services/event-consumer
-    environment:
-      - KAFKA_BROKER=kafka:9092
-      - POSTGRES_URI=postgresql://postgres:postgres@db:5432/ecommerce
-      - PARQUET_DIR=/data/events_parquet
-    volumes:
-      - ../notebooks/artifacts/events:/data/events_parquet
-    depends_on:
-      - kafka
-      - db
-    restart: unless-stopped
 
   # ---------- FRONTEND ----------
   frontend:

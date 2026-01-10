@@ -3,25 +3,17 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export const Navbar: React.FC = () => {
-  const { isAuthenticated, userEmail, logout } = useAuth();
+  const { isAuthenticated, userName, logout } = useAuth();
 
-  // Extract email prefix for display
-  const getUserDisplay = (email: string | null): { initial: string; prefix: string } => {
-    if (!email) return { initial: 'U', prefix: 'User' };
+  // Get user display from name
+  const getUserDisplay = (name: string | null): { initial: string; displayName: string } => {
+    if (!name) return { initial: 'U', displayName: 'User' };
     
-    // Check if it's an email
-    if (email.includes('@')) {
-      const prefix = email.split('@')[0];
-      const initial = prefix.charAt(0).toUpperCase();
-      return { initial, prefix };
-    }
-    
-    // Fallback for non-email IDs (show first 10 chars or full if shorter)
-    const displayName = email.length > 10 ? email.substring(0, 10) : email;
-    return { initial: email.charAt(0).toUpperCase(), prefix: displayName };
+    const initial = name.charAt(0).toUpperCase();
+    return { initial, displayName: name };
   };
 
-  const userDisplay = getUserDisplay(userEmail);
+  const userDisplay = getUserDisplay(userName);
 
   return (
     <nav className="bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-lg">
@@ -70,7 +62,7 @@ export const Navbar: React.FC = () => {
                   <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-md text-sm sm:text-base">
                     {userDisplay.initial}
                   </div>
-                  <span className="hidden md:inline text-sm text-gray-300">{userDisplay.prefix}</span>
+                  <span className="hidden md:inline text-sm text-gray-300">{userDisplay.displayName}</span>
                 </div>
                 <button
                   onClick={logout}

@@ -6,9 +6,10 @@ interface AuthContextType {
   isAuthenticated: boolean;
   userId: string | null;
   userEmail: string | null;
+  userName: string | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
 }
@@ -19,6 +20,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [token, setToken] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,11 +28,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const storedToken = localStorage.getItem('token');
     const storedUserId = localStorage.getItem('userId');
     const storedEmail = localStorage.getItem('userEmail');
+    const storedName = localStorage.getItem('userName');
     
     if (storedToken && storedUserId) {
       setToken(storedToken);
       setUserId(storedUserId);
       setUserEmail(storedEmail);
+      setUserName(storedName);
       // Set default Authorization header
       api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
     }
@@ -41,40 +45,54 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const response = await api.post('/api/auth/login', { email, password });
     const { token, id } = response.data;
     
+    // Set token first for subsequent requests
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    
+    // Fetch user profile to get name
+    const profileResponse = await api.get('/api/auth/me');
+    const { name } = profileResponse.data;
+    
     setToken(token);
     setUserId(id);
     setUserEmail(email);
+    setUserName(name);
     localStorage.setItem('token', token);
     localStorage.setItem('userId', id);
     localStorage.setItem('userEmail', email);
-    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    localStorage.setItem('userName', name);
   };
 
-  const register = async (email: string, password: string) => {
+  const register = async (name: string, email: string, password: string) => {
     // First register the user
-    const signupResponse = await api.post('/api/auth/signup', { email, password });
+    const signupResponse = await api.post('/api/auth/signup', { name, email, password });
     const { id } = signupResponse.data;
     
     // Then automatically log them in
     const loginResponse = await api.post('/api/auth/login', { email, password });
     const { token } = loginResponse.data;
     
+    // Set token first for subsequent requests
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    
     setToken(token);
     setUserId(id);
     setUserEmail(email);
+    setUserName(name);
     localStorage.setItem('token', token);
     localStorage.setItem('userId', id);
     localStorage.setItem('userEmail', email);
-    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    localStorage.setItem('userName', name);
   };
 
   const logout = () => {
     setToken(null);
     setUserId(null);
     setUserEmail(null);
+    setUserName(null);
     localStorage.removeItem('token');
     localStorage.removeItem('userId');
     localStorage.removeItem('userEmail');
+    localStorage.removeItem('userName');
     delete api.defaults.headers.common['Authorization'];
   };
 
@@ -84,6 +102,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isAuthenticated: !!token,
         userId,
         userEmail,
+        userName,
         token,
         login,
         register,

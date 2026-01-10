@@ -68,9 +68,9 @@ export const HomePage: React.FC = () => {
       <section className="mb-8 sm:mb-12">
         <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 sm:p-8 mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            Personalized Recommendations
+            Recommended Products
           </h1>
-          <p className="text-sm sm:text-base text-gray-600">Personalized using historical behavior and recent session activity</p>
+          <p className="text-sm sm:text-base text-gray-600">Based on popular and relevant items</p>
         </div>
         
         {loadingRecs ? (
@@ -80,7 +80,7 @@ export const HomePage: React.FC = () => {
         ) : recommendations.length === 0 ? (
           <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border-l-4 border-yellow-400 px-6 py-4 rounded-lg">
             <p className="text-gray-700">
-              <span className="font-semibold">Getting started:</span> Browse products to help us learn your preferences and provide personalized recommendations!
+              <span className="font-semibold">Getting started:</span> Browse our curated selection of popular products!
             </p>
           </div>
         ) : (

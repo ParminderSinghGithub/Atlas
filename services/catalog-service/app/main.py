@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.api.routes import products, categories, sellers, health
+from app.api.routes import products, categories, sellers, health, events
 
 
 @asynccontextmanager
@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI application
 app = FastAPI(
     title="Product Catalog Service",
-    description="Read-only API for querying products, categories, and sellers",
+    description="API for querying products, categories, sellers, and event ingestion",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -47,7 +47,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Configure for production
     allow_credentials=True,
-    allow_methods=["GET", "HEAD", "OPTIONS"],  # Read-only API
+    allow_methods=["GET", "POST", "HEAD", "OPTIONS"],  # Read + event ingestion
     allow_headers=["*"],
 )
 
@@ -56,6 +56,9 @@ app.include_router(health.router, prefix=settings.API_V1_PREFIX)
 app.include_router(products.router, prefix=settings.API_V1_PREFIX)
 app.include_router(categories.router, prefix=settings.API_V1_PREFIX)
 app.include_router(sellers.router, prefix=settings.API_V1_PREFIX)
+
+# Event ingestion (no API prefix, matches frontend contract: POST /events)
+app.include_router(events.router)
 
 
 @app.get("/")
