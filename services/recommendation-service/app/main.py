@@ -125,6 +125,33 @@ async def lifespan(app: FastAPI):
         logger.info(f"STARTUP COMPLETE - {settings.service_name}")
         logger.info(f"Port: {settings.service_port}")
         logger.info("="*70)
+        
+        # Warm-up: Execute a test recommendation to load all lazy components
+        logger.info("="*70)
+        logger.info("MODEL WARM-UP")
+        logger.info("="*70)
+        try:
+            logger.info("Executing warm-up recommendation request...")
+            # Import here to avoid circular imports
+            from app.api.routes import generate_recommendations
+            
+            # Execute a dummy recommendation request to warm up:
+            # - Database connection pool
+            # - Feature loading
+            # - Model inference paths
+            # - UUID mapping
+            warm_up_result = await generate_recommendations(
+                user_id="warm-up-user",
+                k=5,
+                product_id=None
+            )
+            logger.info(f"  PASS Warm-up complete | strategy={warm_up_result.get('strategy_used', 'unknown')} | items={len(warm_up_result.get('recommendations', []))}")
+        except Exception as e:
+            logger.warning(f"  WARN Warm-up failed (non-critical): {e}")
+        
+        logger.info("="*70)
+        logger.info("RECOMMENDATION SERVICE READY")
+        logger.info("="*70)
     
     except Exception as e:
         logger.error(f"Failed to start service: {e}", exc_info=True)

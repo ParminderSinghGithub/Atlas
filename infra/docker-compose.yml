@@ -44,6 +44,7 @@ services:
       - ARTIFACTS_PATH=/artifacts
       - MODEL_VERSION=production_v1
       - LOG_LEVEL=INFO
+      - ENABLE_LIGHTGBM_RANKING=true
     volumes:
       - ../notebooks/artifacts:/artifacts:ro
     depends_on:

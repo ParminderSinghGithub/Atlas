@@ -131,7 +131,7 @@ def aggregate_metrics(events: List[Dict[str, Any]]) -> Dict[str, Any]:
         }
     
     # Strategy breakdown (percentages)
-    strategy_breakdown = {
+    strategy_distribution = {
         strategy: {
             "count": count,
             "percentage": round(100 * count / total_impressions, 2)
@@ -148,20 +148,28 @@ def aggregate_metrics(events: List[Dict[str, Any]]) -> Dict[str, Any]:
     avg_k = round(statistics.mean(num_recommendations), 2) if num_recommendations else 0
     
     return {
+        # Root-level keys for test compatibility
+        "total_impressions": total_impressions,
+        "unique_users": len(unique_users),
+        "unique_items_recommended": len(unique_items),
+        "strategy_distribution": strategy_distribution,
+        "fallback_rate_pct": fallback_rate,
+        "avg_recommendations_per_request": avg_k,
+        # Nested summary (backward compatibility)
         "summary": {
             "total_impressions": total_impressions,
             "unique_users": len(unique_users),
             "unique_items_recommended": len(unique_items),
-            "catalog_coverage_pct": round(100 * len(unique_items) / 2000, 2) if len(unique_items) > 0 else 0,  # Assuming ~2000 products
+            "catalog_coverage_pct": round(100 * len(unique_items) / 2000, 2) if len(unique_items) > 0 else 0,
             "fallback_rate_pct": fallback_rate,
             "avg_recommendations_per_request": avg_k
         },
-        "strategy_breakdown": strategy_breakdown,
+        "strategy_breakdown": strategy_distribution,  # Alias
         "latency_stats_ms": latency_stats,
         "health_indicators": {
-            "high_fallback_rate": fallback_rate > 50,  # More than 50% fallbacks indicates model issues
-            "low_coverage": len(unique_items) < 100,  # Less than 100 unique items = poor diversity
-            "high_latency": latency_stats.get("p95", 0) > 500  # p95 > 500ms = slow
+            "high_fallback_rate": fallback_rate > 50,
+            "low_coverage": len(unique_items) < 100,
+            "high_latency": latency_stats.get("p95", 0) > 500
         }
     }
 

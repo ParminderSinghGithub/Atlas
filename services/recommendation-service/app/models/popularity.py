@@ -137,21 +137,27 @@ class PopularityModel:
             logger.error(f"Failed to generate popularity baseline: {e}")
             self.popularity_scores = pd.Series(dtype=float)
     
-    def get_top_k(self, k: int = 100, valid_ids: Optional[List[int]] = None) -> List[int]:
+    def get_top_k(self, k: int = 100, valid_ids: Optional[List[int]] = None, return_scores: bool = True) -> List:
         """
         Get top-K popular items.
         
         Args:
             k: Number of items to return
             valid_ids: Optional list of valid item IDs to filter by (for catalog mapping)
+            return_scores: If True, return List[(int, float)]. If False, return List[int]
         
         Returns:
-            List of RetailRocket item IDs
+            List of RetailRocket item IDs (optionally with scores)
         
         Why valid_ids filtering:
         - Popularity baseline has 235K items from retailrocket
         - Only ~2K items have catalog UUID mappings
         - Filter ensures we only recommend mapped items
+        
+        Why return_scores:
+        - Session re-ranking needs varying scores to reorder
+        - Without scores, all items have identical weights (no reranking possible)
+        - Scores reflect actual popularity (view counts)
         """
         if self.popularity_scores is None:
             self.load()
@@ -171,9 +177,15 @@ class PopularityModel:
                 logger.warning("No valid mapped items in popularity baseline")
                 return []
         
-        # Return top-K item IDs
+        # Return top-K item IDs (with optional scores)
         top_items = scores_to_use.nlargest(min(k, len(scores_to_use)))
-        return [int(item_id) for item_id in top_items.index]
+        
+        if return_scores:
+            # Return list of tuples: [(item_id, score), ...]
+            return [(int(item_id), float(score)) for item_id, score in top_items.items()]
+        else:
+            # Return list of IDs only (backward compatibility)
+            return [int(item_id) for item_id in top_items.index]
     
     def is_available(self) -> bool:
         """Check if model is loaded and ready."""

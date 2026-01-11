@@ -288,25 +288,44 @@ class SessionReranker:
             boost = 0.0
             reasons = []
             
-            # Get product category
+            # Get product metadata
             metadata = product_metadata.get(candidate, {})
             category_id = metadata.get('category_id')
+            category_name = metadata.get('category_name', '')
             
-            # Category boost
-            if category_id and category_id in signals.categories_viewed:
+            # Category boost - match by ID or name/slug
+            # Session tracks category_slug, but we match by name or ID
+            category_match = False
+            if category_id:
+                # Check if category ID string is in viewed categories
+                if str(category_id) in signals.categories_viewed:
+                    category_match = True
+            if category_name:
+                # Check if category name matches (case-insensitive)
+                for viewed_cat in signals.categories_viewed:
+                    if viewed_cat.lower() in category_name.lower() or category_name.lower() in viewed_cat.lower():
+                        category_match = True
+                        break
+            
+            if category_match:
                 boost += self.CATEGORY_BOOST
                 reasons.append('category_match')
             
             # Product relation boost (viewed similar products)
             # Simple heuristic: if any product in session matches category
             if signals.products_viewed:
+                # Direct product match
+                if candidate in signals.products_viewed:
+                    boost += self.PRODUCT_BOOST * 2  # Strong boost for viewed product
+                    reasons.append('product_viewed')
                 # Check if category matches any viewed product
-                for viewed_pid in signals.products_viewed:
-                    viewed_meta = product_metadata.get(viewed_pid, {})
-                    if viewed_meta.get('category_id') == category_id:
-                        boost += self.PRODUCT_BOOST
-                        reasons.append('related_product')
-                        break
+                else:
+                    for viewed_pid in signals.products_viewed:
+                        viewed_meta = product_metadata.get(viewed_pid, {})
+                        if viewed_meta.get('category_id') == category_id or viewed_meta.get('category_name') == category_name:
+                            boost += self.PRODUCT_BOOST
+                            reasons.append('related_product')
+                            break
             
             boosted_score = score + boost
             boosted_scores.append(boosted_score)

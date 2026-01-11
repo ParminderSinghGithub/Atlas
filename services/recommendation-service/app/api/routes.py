@@ -60,14 +60,19 @@ async def fetch_product_metadata(product_ids: List[UUID]) -> Dict[UUID, Dict[str
                     )
                     if response.status_code == 200:
                         product_data = response.json()
+                        # Extract category slug from category object
+                        category = product_data.get('category', {})
+                        category_slug = category.get('slug', category.get('name', '').lower().replace(' ', '-'))
+                        
                         metadata[pid] = {
                             'name': product_data.get('name', ''),
                             'price': product_data.get('price', 0),
-                            'category_name': product_data.get('category_name', ''),
+                            'category_name': category.get('name', ''),
+                            'category_slug': category_slug,
                             'image_url': product_data.get('image_url', ''),
                             'stock_quantity': 10,  # Mock for now
                             'is_deleted': False,
-                            'category_id': product_data.get('category_id', '')
+                            'category_id': category.get('id', '')
                         }
                     else:
                         logger.warning(f"Failed to fetch product {pid}: HTTP {response.status_code}")
@@ -195,7 +200,24 @@ async def get_recommendations(
             )
         else:
             # Normal flow: (strategy, retailrocket_ids)
-            strategy_used, retailrocket_ids = candidate_result
+            strategy_used, candidate_data = candidate_result
+            
+            # Normalize candidate data: can be List[int] or List[(int, float)]
+            # Convert to uniform format: List[(int, float)]
+            if candidate_data and isinstance(candidate_data[0], tuple):
+                # Already has scores: [(id, score), ...]
+                retailrocket_ids_with_scores = candidate_data
+                logger.info(f"Candidates include scores (from popularity)")
+            else:
+                # IDs only: [id, id, ...] - assign descending scores
+                retailrocket_ids_with_scores = [
+                    (item_id, 1.0 - (i * 0.01))
+                    for i, item_id in enumerate(candidate_data)
+                ]
+                logger.info(f"Candidates without scores, assigned descending scores (1.0 to {1.0 - (len(candidate_data) * 0.01):.2f})")
+            
+            # Extract IDs for feature assembly
+            retailrocket_ids = [item_id for item_id, _ in retailrocket_ids_with_scores]
         
         logger.info(f"Candidate generation complete: strategy={strategy_used}, count={len(retailrocket_ids) if retailrocket_ids else 0}")
         
@@ -237,6 +259,7 @@ async def get_recommendations(
         
         # Apply LightGBM ranking
         ranked_items_with_scores = []
+        logger.info(f"LightGBM status: is_available={ranker.is_available()}, enabled={settings.enable_lightgbm_ranking}")
         if ranker.is_available() and settings.enable_lightgbm_ranking:
             try:
                 scores = ranker.predict(features_df)
@@ -269,21 +292,15 @@ async def get_recommendations(
                     strategy_used = "popularity_fallback"
                     
             except Exception as e:
-                logger.error(f"LightGBM ranking failed, using candidate order: {e}")
+                logger.error(f"LightGBM ranking failed, using original candidate scores: {e}")
                 log_fallback(logger, "lightgbm_failure", "candidate_order")
-                # Fallback: use candidate order with descending scores
-                ranked_items_with_scores = [
-                    (item_id, 1.0 - (i * 0.01))
-                    for i, item_id in enumerate(retailrocket_ids)
-                ]
+                # Fallback: use original scores from candidate generation
+                ranked_items_with_scores = retailrocket_ids_with_scores
                 strategy_used = f"{strategy_used}_no_ranking"
         else:
-            logger.info("LightGBM disabled or unavailable, using candidate order")
-            # Fallback: use candidate order with descending scores
-            ranked_items_with_scores = [
-                (item_id, 1.0 - (i * 0.01))
-                for i, item_id in enumerate(retailrocket_ids)
-            ]
+            logger.info("LightGBM disabled or unavailable, using original candidate scores")
+            # Use original scores from candidate generation (preserves popularity scores)
+            ranked_items_with_scores = retailrocket_ids_with_scores
             strategy_used = f"{strategy_used}_no_ranking"
         
         # Extract just IDs for mapping (scores preserved for response)
@@ -361,9 +378,10 @@ async def get_recommendations(
                 name=product_metadata.get(pid, {}).get('name'),
                 price=product_metadata.get(pid, {}).get('price'),
                 category_name=product_metadata.get(pid, {}).get('category_name'),
+                category_slug=product_metadata.get(pid, {}).get('category_slug'),
                 image_url=product_metadata.get(pid, {}).get('image_url'),
                 reason=f"Recommended via {strategy_used}" if include_metadata else None,
-                confidence=0.85 if include_metadata else None  # TODO: Use actual mapping confidence
+                confidence=0.85 if include_metadata else None
             )
             for rank, (pid, score) in enumerate(final_products_with_scores)
         ]
