@@ -22,6 +22,11 @@ RECOMMENDATION_SERVICE_URL = "http://recommendation-service:5005"
 async def root():
     return {"message": "API Gateway alive"}
 
+@app.get("/health")
+async def health():
+    """Health check endpoint for Kubernetes/Docker."""
+    return {"status": "healthy", "service": "api-gateway"}
+
 # ==================== USER SERVICE ROUTES ====================
 @app.api_route("/api/auth/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 async def proxy_auth(path: str, request: Request):
