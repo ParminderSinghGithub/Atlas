@@ -1,0 +1,97 @@
+---
+# Recommendation Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recommendation-service
+  namespace: atlas
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: recommendation-service
+  template:
+    metadata:
+      labels:
+        app: recommendation-service
+    spec:
+      initContainers:
+      - name: copy-artifacts
+        image: busybox:1.36
+        command: ['sh', '-c', 'echo "Artifacts will be mounted via hostPath volume"']
+        volumeMounts:
+        - name: artifacts-host
+          mountPath: /host-artifacts
+          readOnly: true
+      containers:
+      - name: recommendation-service
+        image: recommendation-service:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 5005
+          name: http
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: DATABASE_URL
+        - name: SERVICE_PORT
+          value: "5005"
+        - name: REDIS_ENABLED
+          value: "true"
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: REDIS_URL
+        - name: ARTIFACTS_PATH
+          value: "/artifacts"
+        - name: MODEL_VERSION
+          value: "production_v1"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: ENABLE_LIGHTGBM_RANKING
+          value: "true"
+        volumeMounts:
+        - name: artifacts-host
+          mountPath: /artifacts
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5005
+          initialDelaySeconds: 180
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5005
+          initialDelaySeconds: 150
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: artifacts-host
+        hostPath:
+          path: /run/desktop/mnt/host/c/Projects/P1/notebooks/artifacts
+          type: Directory
+
+---
+# Recommendation Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: recommendation-service
+  namespace: atlas
+spec:
+  type: ClusterIP
+  selector:
+    app: recommendation-service
+  ports:
+  - port: 5005
+    targetPort: 5005
+    protocol: TCP
+    name: http

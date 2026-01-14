@@ -87,25 +87,13 @@ class FeatureLoader:
                 logger.warning(f"Item features not found at {item_path}")
             
             # Load interaction features (optional)
+            # SKIP: Too large (49MB), causes pod crashes during startup
+            # Can be loaded lazily if needed in future
             interaction_path = self.artifacts_path / "features" / "retailrocket" / "interaction_features.parquet"
             if interaction_path.exists():
-                self.interaction_features = pd.read_parquet(interaction_path)
-                # Index by (user_id, item_id) or (user_id, product_id) tuple
-                if 'user_id' in self.interaction_features.columns:
-                    if 'product_id' in self.interaction_features.columns:
-                        self.interaction_features.set_index(['user_id', 'product_id'], inplace=True)
-                    elif 'item_id' in self.interaction_features.columns:
-                        self.interaction_features.set_index(['user_id', 'item_id'], inplace=True)
-                    else:
-                        logger.warning("Interaction features missing 'item_id' or 'product_id' column")
-                        self.interaction_features = None
-                        return
-                    
-                    self.interaction_feature_cols = [
-                        c for c in self.interaction_features.columns 
-                        if c not in ['user_id', 'item_id', 'product_id']
-                    ]
-                    logger.info(f"Loaded interaction features | rows={len(self.interaction_features)} | cols={len(self.interaction_feature_cols)}")
+                logger.info(f"SKIP: Interaction features found at {interaction_path} but skipped (too large for startup)")
+                # self.interaction_features = pd.read_parquet(interaction_path)
+                # ... (rest of loading code commented out)
             else:
                 logger.info(f"Interaction features not found at {interaction_path} (optional)")
         

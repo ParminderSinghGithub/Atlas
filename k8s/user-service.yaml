@@ -1,0 +1,73 @@
+---
+# User Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: atlas
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+      - name: user-service
+        image: user-service:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 5000
+          name: http
+        env:
+        - name: POSTGRES_URI
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: POSTGRES_URI
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: JWT_SECRET
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: REDIS_URL
+        livenessProbe:
+          httpGet:
+            path: /api/auth/ping
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/auth/ping
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+---
+# User Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: atlas
+spec:
+  type: ClusterIP
+  selector:
+    app: user-service
+  ports:
+  - port: 5000
+    targetPort: 5000
+    protocol: TCP
+    name: http

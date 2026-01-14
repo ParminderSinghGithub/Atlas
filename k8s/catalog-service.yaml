@@ -1,0 +1,65 @@
+---
+# Catalog Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service
+  namespace: atlas
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalog-service
+  template:
+    metadata:
+      labels:
+        app: catalog-service
+    spec:
+      containers:
+      - name: catalog-service
+        image: catalog-service:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 5004
+          name: http
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: atlas-secrets
+              key: DATABASE_URL
+        - name: SERVICE_PORT
+          value: "5004"
+        livenessProbe:
+          httpGet:
+            path: /api/v1/catalog/health
+            port: 5004
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/v1/catalog/health
+            port: 5004
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+---
+# Catalog Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-service
+  namespace: atlas
+spec:
+  type: ClusterIP
+  selector:
+    app: catalog-service
+  ports:
+  - port: 5004
+    targetPort: 5004
+    protocol: TCP
+    name: http

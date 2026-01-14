@@ -97,19 +97,27 @@ async def lifespan(app: FastAPI):
         # 5. Load Feature Tables
         logger.info("[5/5] Loading Feature Tables...")
         feature_loader = get_feature_loader()
-        logger.info(f"  PASS Features | users={len(feature_loader.user_features) if feature_loader.user_features is not None else 0} | items={len(feature_loader.item_features) if feature_loader.item_features is not None else 0}")
+        logger.info("DEBUG: Feature loader returned successfully")
+        try:
+            user_count = len(feature_loader.user_features) if feature_loader.user_features is not None else 0
+            logger.info(f"DEBUG: User count = {user_count}")
+            item_count = len(feature_loader.item_features) if feature_loader.item_features is not None else 0
+            logger.info(f"DEBUG: Item count = {item_count}")
+            logger.info(f"  PASS Features | users={user_count} | items={item_count}")
+        except Exception as e:
+            logger.error(f"ERROR accessing features: {e}", exc_info=True)
+            raise
         
         logger.info("="*70)
         logger.info(f"Loaded models from version: {settings.model_version}")
         logger.info("="*70)
         
-        # Connect to database
+        # Database connection is LAZY - will connect on first request
+        # (Skip connection during startup to avoid blocking pod initialization)
         logger.info("="*70)
         logger.info("DATABASE CONNECTION")
         logger.info("="*70)
-        mapper = get_latent_mapper()
-        await mapper.connect()
-        logger.info(f"  PASS Database connected")
+        logger.info("  SKIP Database connection deferred to first request (lazy initialization)")
         
         # Initialize session reranker
         logger.info("="*70)
@@ -127,27 +135,12 @@ async def lifespan(app: FastAPI):
         logger.info("="*70)
         
         # Warm-up: Execute a test recommendation to load all lazy components
+        # Warm-up is DISABLED to avoid blocking startup with database connection
+        # Database will connect lazily on first actual request
         logger.info("="*70)
         logger.info("MODEL WARM-UP")
         logger.info("="*70)
-        try:
-            logger.info("Executing warm-up recommendation request...")
-            # Import here to avoid circular imports
-            from app.api.routes import generate_recommendations
-            
-            # Execute a dummy recommendation request to warm up:
-            # - Database connection pool
-            # - Feature loading
-            # - Model inference paths
-            # - UUID mapping
-            warm_up_result = await generate_recommendations(
-                user_id="warm-up-user",
-                k=5,
-                product_id=None
-            )
-            logger.info(f"  PASS Warm-up complete | strategy={warm_up_result.get('strategy_used', 'unknown')} | items={len(warm_up_result.get('recommendations', []))}")
-        except Exception as e:
-            logger.warning(f"  WARN Warm-up failed (non-critical): {e}")
+        logger.info("  SKIP Warm-up disabled (will initialize on first request)")
         
         logger.info("="*70)
         logger.info("RECOMMENDATION SERVICE READY")
