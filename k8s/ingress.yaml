@@ -7,15 +7,21 @@ metadata:
     app: atlas
     environment: production
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
 spec:
   ingressClassName: nginx
+  tls:
+  - hosts:
+    - 4-224-153-183.sslip.io
+    secretName: atlas-tls
   rules:
-  - http:
+  - host: 4-224-153-183.sslip.io
+    http:
       paths:
       # API routes - must come first for precedence
       - path: /api
