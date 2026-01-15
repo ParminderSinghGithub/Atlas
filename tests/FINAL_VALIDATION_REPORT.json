@@ -1,0 +1,59 @@
+{
+  "timestamp": "2026-01-13T17:20:10.700262",
+  "total_suites": 7,
+  "passed_suites": 7,
+  "failed_suites": 0,
+  "total_duration_seconds": 20.00924015045166,
+  "results": [
+    {
+      "name": "Deployment Readiness",
+      "script": "deployment/test_deployment.py",
+      "exit_code": 0,
+      "duration_seconds": 0.5298786163330078,
+      "success": true
+    },
+    {
+      "name": "API Gateway",
+      "script": "gateway/test_gateway.py",
+      "exit_code": 0,
+      "duration_seconds": 2.052248477935791,
+      "success": true
+    },
+    {
+      "name": "Authentication Service",
+      "script": "auth/test_auth_service.py",
+      "exit_code": 0,
+      "duration_seconds": 1.3324744701385498,
+      "success": true
+    },
+    {
+      "name": "Catalog Service",
+      "script": "catalog/test_catalog_service.py",
+      "exit_code": 0,
+      "duration_seconds": 5.034266471862793,
+      "success": true
+    },
+    {
+      "name": "Recommendation Service",
+      "script": "recommendation/test_recommendation_service.py",
+      "exit_code": 0,
+      "duration_seconds": 8.443576574325562,
+      "success": true
+    },
+    {
+      "name": "Training Pipeline",
+      "script": "training/test_training_pipeline.py",
+      "exit_code": 0,
+      "duration_seconds": 0.1473076343536377,
+      "success": true
+    },
+    {
+      "name": "Monitoring Scripts",
+      "script": "monitoring/test_monitoring_scripts.py",
+      "exit_code": 0,
+      "duration_seconds": 2.4694879055023193,
+      "success": true
+    }
+  ],
+  "verdict": "GO"
+}
