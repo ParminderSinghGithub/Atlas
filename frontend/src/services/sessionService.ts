@@ -27,7 +27,7 @@ class SessionService {
    */
   async trackCategoryView(userId: string, categorySlug: string): Promise<void> {
     try {
-      const response = await api.post<SessionTrackResponse>('/api/v1/session/track', {
+      const response = await api.post<SessionTrackResponse>('/v1/session/track', {
         user_id: userId,
         event_type: 'category_view',
         category_slug: categorySlug,
@@ -51,7 +51,7 @@ class SessionService {
    */
   async trackProductView(userId: string, productId: string): Promise<void> {
     try {
-      const response = await api.post<SessionTrackResponse>('/api/v1/session/track', {
+      const response = await api.post<SessionTrackResponse>('/v1/session/track', {
         user_id: userId,
         event_type: 'product_view',
         product_id: productId,

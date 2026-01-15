@@ -20,10 +20,10 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: frontend:latest
-        imagePullPolicy: Never  # Use local image on Docker Desktop
+        image: atlasacrp1.azurecr.io/frontend:v3
+        imagePullPolicy: Always
         ports:
-        - containerPort: 5174
+        - containerPort: 80
           name: http
           protocol: TCP
         env:
@@ -39,7 +39,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /
-            port: 5174
+            port: 80
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 5
@@ -47,7 +47,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /
-            port: 5174
+            port: 80
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
@@ -67,7 +67,7 @@ spec:
     app: frontend
   ports:
   - port: 80
-    targetPort: 5174
+    targetPort: 80
     protocol: TCP
     name: http
   sessionAffinity: None

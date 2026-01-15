@@ -1,20 +1,4 @@
 ---
-# PersistentVolume for PostgreSQL data
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: postgres-pv
-spec:
-  capacity:
-    storage: 5Gi
-  accessModes:
-    - ReadWriteOnce
-  hostPath:
-    path: /data/postgres
-    type: DirectoryOrCreate
-  persistentVolumeReclaimPolicy: Retain
-
----
 # PersistentVolumeClaim for PostgreSQL
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -70,6 +54,7 @@ spec:
         volumeMounts:
         - name: postgres-storage
           mountPath: /var/lib/postgresql/data
+          subPath: pgdata
         livenessProbe:
           exec:
             command:

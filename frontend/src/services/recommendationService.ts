@@ -24,7 +24,7 @@ class RecommendationService {
     k: number = 10
   ): Promise<RecommendationResponse> {
     try {
-      const response = await api.get('/api/v1/recommendations', {
+      const response = await api.get('/v1/recommendations', {
         params: { user_id: userId, k },
       });
       
@@ -46,7 +46,7 @@ class RecommendationService {
     k: number = 5
   ): Promise<RecommendationResponse> {
     try {
-      const response = await api.get('/api/v1/recommendations', {
+      const response = await api.get('/v1/recommendations', {
         params: { product_id: productId, k },
       });
       

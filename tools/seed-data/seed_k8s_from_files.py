@@ -89,8 +89,8 @@ def seed_database():
                     cat_id = list(category_id_map.values())[0]
                 
                 conn.execute(text("""
-                    INSERT INTO products (id, category_id, name, description, price, image_url, stock_quantity, created_at, updated_at)
-                    VALUES (:id, :cat, :name, :desc, :price, :img, :stock, now(), now())
+                    INSERT INTO products (id, category_id, name, description, price, currency, image_url, stock_quantity, created_at, updated_at)
+                    VALUES (:id, :cat, :name, :desc, :price, :currency, :img, :stock, now(), now())
                     ON CONFLICT (id) DO NOTHING
                 """), {
                     "id": str(prod_id),
@@ -98,6 +98,7 @@ def seed_database():
                     "name": p['title'][:200],
                     "desc": p['description'][:500],
                     "price": float(p['price']) / 90.0,  # Convert INR to USD
+                    "currency": "USD",
                     "img": p['main_image_url'],
                     "stock": 100
                 })

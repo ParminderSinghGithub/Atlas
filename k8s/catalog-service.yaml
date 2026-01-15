@@ -17,8 +17,8 @@ spec:
     spec:
       containers:
       - name: catalog-service
-        image: catalog-service:latest
-        imagePullPolicy: Never
+        image: atlasacrp1.azurecr.io/catalog-service:v2
+        imagePullPolicy: Always
         ports:
         - containerPort: 5004
           name: http

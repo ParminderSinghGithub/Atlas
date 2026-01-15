@@ -34,18 +34,18 @@ class CatalogService {
     limit?: number;
     category_id?: string;
   }): Promise<PaginatedResponse<Product>> {
-    const response = await api.get('/api/v1/catalog/products', { params });
+    const response = await api.get('/v1/catalog/products', { params });
     // Return actual API response structure
     return response.data;
   }
 
   async getProduct(id: string): Promise<Product> {
-    const response = await api.get(`/api/v1/catalog/products/${id}`);
+    const response = await api.get(`/v1/catalog/products/${id}`);
     return response.data;
   }
 
   async getCategories(): Promise<Category[]> {
-    const response = await api.get('/api/v1/catalog/categories');
+    const response = await api.get('/v1/catalog/categories');
     // API returns { categories: [...] }, not just array
     return response.data.categories || [];
   }

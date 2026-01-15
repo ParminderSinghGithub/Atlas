@@ -15,8 +15,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: localhost
-    http:
+  - http:
       paths:
       # API routes - must come first for precedence
       - path: /api

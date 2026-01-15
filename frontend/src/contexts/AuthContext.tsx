@@ -42,14 +42,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const login = async (email: string, password: string) => {
-    const response = await api.post('/api/auth/login', { email, password });
+    const response = await api.post('/auth/login', { email, password });
     const { token, id } = response.data;
     
     // Set token first for subsequent requests
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     
     // Fetch user profile to get name
-    const profileResponse = await api.get('/api/auth/me');
+    const profileResponse = await api.get('/auth/me');
     const { name } = profileResponse.data;
     
     setToken(token);
@@ -64,11 +64,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const register = async (name: string, email: string, password: string) => {
     // First register the user
-    const signupResponse = await api.post('/api/auth/signup', { name, email, password });
+    const signupResponse = await api.post('/auth/register', { name, email, password });
     const { id } = signupResponse.data;
     
     // Then automatically log them in
-    const loginResponse = await api.post('/api/auth/login', { email, password });
+    const loginResponse = await api.post('/auth/login', { email, password });
     const { token } = loginResponse.data;
     
     // Set token first for subsequent requests

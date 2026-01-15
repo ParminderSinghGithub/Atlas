@@ -17,8 +17,8 @@ spec:
     spec:
       containers:
       - name: user-service
-        image: user-service:latest
-        imagePullPolicy: Never
+        image: atlasacrp1.azurecr.io/user-service:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 5000
           name: http

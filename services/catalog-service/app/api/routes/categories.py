@@ -189,15 +189,15 @@ def list_category_products(
     # Determine next cursor
     next_cursor = products[-1].id if products and has_more else None
     
-    # Build response
+    # Build response with USD to INR conversion
     return ProductListResponse(
         products=[
             ProductResponse(
                 id=p.id,
                 name=p.name,
                 description=p.description,
-                price=p.price,
-                currency=p.currency,
+                price=round(float(p.price) * settings.USD_TO_INR_RATE, 2),
+                currency="INR",
                 stock_quantity=p.stock_quantity,
                 image_url=p.image_url,
                 thumbnail_url=p.thumbnail_url,

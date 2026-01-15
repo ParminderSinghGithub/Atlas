@@ -15,18 +15,10 @@ spec:
       labels:
         app: recommendation-service
     spec:
-      initContainers:
-      - name: copy-artifacts
-        image: busybox:1.36
-        command: ['sh', '-c', 'echo "Artifacts will be mounted via hostPath volume"']
-        volumeMounts:
-        - name: artifacts-host
-          mountPath: /host-artifacts
-          readOnly: true
       containers:
       - name: recommendation-service
-        image: recommendation-service:latest
-        imagePullPolicy: Never
+        image: atlasacrp1.azurecr.io/recommendation-service:v2
+        imagePullPolicy: Always
         ports:
         - containerPort: 5005
           name: http
@@ -53,10 +45,6 @@ spec:
           value: "INFO"
         - name: ENABLE_LIGHTGBM_RANKING
           value: "true"
-        volumeMounts:
-        - name: artifacts-host
-          mountPath: /artifacts
-          readOnly: true
         livenessProbe:
           httpGet:
             path: /health
@@ -73,11 +61,6 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
-      volumes:
-      - name: artifacts-host
-        hostPath:
-          path: /run/desktop/mnt/host/c/Projects/P1/notebooks/artifacts
-          type: Directory
 
 ---
 # Recommendation Service
