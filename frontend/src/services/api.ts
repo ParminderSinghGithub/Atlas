@@ -1,7 +1,10 @@
 import axios from 'axios';
 
+// Use environment variable or fallback to relative path (for Azure Ingress)
+const apiBaseURL = import.meta.env.VITE_API_URL || '/api';
+
 const api = axios.create({
-  baseURL: '/api', // Relative path - works with Ingress routing
+  baseURL: apiBaseURL,
   headers: {
     'Content-Type': 'application/json',
   },

@@ -33,7 +33,9 @@ services:
     restart: unless-stopped
 
   recommendation-service:
-    build: ../services/recommendation-service
+    build:
+      context: ..
+      dockerfile: services/recommendation-service/Dockerfile
     ports:
       - "5005:5005"
     environment:
@@ -85,6 +87,8 @@ services:
     build: ../frontend
     ports:
       - "5174:5174"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api
     depends_on:
       - api-gateway
 

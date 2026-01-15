@@ -73,20 +73,17 @@ def seed_database():
             for p in batch:
                 prod_id = uuid.uuid5(uuid.NAMESPACE_DNS, f"amazon_{p['parent_asin']}")
                 
-                # Map to category
-                category_slug = p.get('raw_category', 'other').lower().replace(' ', '-').replace('_', '-')
-                if 'and' in category_slug:
-                    category_slug = category_slug.replace('-and-', '-')
+                # Map to category - direct mapping for known categories
+                raw_cat = p.get('raw_category', 'Electronics')
+                category_mapping = {
+                    'Electronics': 'electronics',
+                    'Cell_Phones_and_Accessories': 'cell-phones',
+                    'Sports_and_Outdoors': 'sports',
+                    'Software': 'software'
+                }
                 
-                cat_id = category_id_map.get(category_slug)
-                if not cat_id:
-                    for slug in category_id_map:
-                        if category_slug in slug or slug in category_slug:
-                            cat_id = category_id_map[slug]
-                            break
-                
-                if not cat_id:
-                    cat_id = list(category_id_map.values())[0]
+                category_slug = category_mapping.get(raw_cat, 'electronics')
+                cat_id = category_id_map.get(category_slug, list(category_id_map.values())[0])
                 
                 conn.execute(text("""
                     INSERT INTO products (id, category_id, name, description, price, currency, image_url, stock_quantity, created_at, updated_at)
