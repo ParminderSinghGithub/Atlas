@@ -2,6 +2,10 @@
 
 **From Local Development to Azure Kubernetes Service**
 
+> **Important Notes**:  
+> - Azure CLI commands assume a Unix-like shell (bash/zsh). Windows users should use Git Bash, WSL, or adapt commands for PowerShell.  
+> - Current deployment is intentionally manual to demonstrate infrastructure knowledge. CI/CD automation is planned as a future enhancement.
+
 ---
 
 ## Table of Contents
@@ -478,15 +482,15 @@ kubectl describe certificate atlas-tls -n atlas
 ### Staging vs Production Certificates
 
 **Let's Encrypt Staging** (current):
-- ⚠️ Browser shows "Not Secure" warning (staging CA not trusted)
-- ✅ No rate limits (unlimited certificate issuance)
-- ✅ Proves TLS infrastructure works
-- ✅ Safe for testing
+- [!] Browser shows "Not Secure" warning (staging CA not trusted)
+- [✓] No rate limits (unlimited certificate issuance)
+- [✓] Proves TLS infrastructure works
+- [✓] Safe for testing
 
 **Let's Encrypt Production**:
-- ✅ Trusted by browsers (no warnings)
-- ⚠️ Rate limited: 50 certificates per registered domain per week
-- ⚠️ Free wildcard DNS services (`nip.io`, `sslip.io`) often hit rate limits
+- [✓] Trusted by browsers (no warnings)
+- [!] Rate limited: 50 certificates per registered domain per week
+- [!] Free wildcard DNS services (`nip.io`, `sslip.io`) often hit rate limits
 
 **Why Staging Certificate?**
 
@@ -723,11 +727,11 @@ az aks check-acr --resource-group atlas-rg --name atlas-aks --acr atlasacrp1
 5. Let's Encrypt → HTTPS encryption
 
 **Current State**:
-- ✅ Deployed to Azure AKS
-- ✅ Public IP: `4.224.153.183`
-- ✅ HTTPS: `https://4-224-153-183.sslip.io/`
-- ✅ All services healthy
-- ⚠️ Staging certificate (browser warning)
+- [✓] Deployed to Azure AKS
+- [✓] Public IP: `4.224.153.183`
+- [✓] HTTPS: `https://4-224-153-183.sslip.io/`
+- [✓] All services healthy
+- [!] Staging certificate (browser warning)
 
 **Production-Ready Improvements**:
 - [ ] Switch to production TLS certificate (custom domain or wait for rate limit reset)
@@ -739,7 +743,3 @@ az aks check-acr --resource-group atlas-rg --name atlas-aks --acr atlasacrp1
 ---
 
 **Next Steps**: Test application at https://4-224-153-183.sslip.io/, then iterate based on user feedback and performance metrics.
-
----
-
-**Last Updated**: January 2026

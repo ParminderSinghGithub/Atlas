@@ -27,21 +27,21 @@ The system bridges **offline training** (RetailRocket behavioral dataset) with *
 ## System Capabilities
 
 ### Core Features
-- ✅ **User Authentication** - JWT-based auth with secure session management
-- ✅ **Product Catalog** - 2,000 curated Amazon products with images, prices, descriptions
-- ✅ **Category Browsing** - Electronics, Cell Phones, Sports, Software
-- ✅ **ML Recommendations** - Three-strategy system (personalized, similarity, popularity)
-- ✅ **Session Tracking** - Redis-based session awareness for intent-driven reranking
+- [✓] **User Authentication** - JWT-based auth with secure session management
+- [✓] **Product Catalog** - 2,000 curated Amazon products with images, prices, descriptions
+- [✓] **Category Browsing** - Electronics, Cell Phones, Sports, Software
+- [✓] **ML Recommendations** - Three-strategy system (personalized, similarity, popularity)
+- [✓] **Session Tracking** - Redis-based session awareness for intent-driven reranking
 
 ### ML Personalization (Current State)
 
 **What IS Personalized:**
-- ✅ **Item-to-Item Similarity** - Product detail pages show similar items based on features
-- ✅ **Session-Aware Reranking** - Recommendations adapt to current browsing session behavior
-- ✅ **Popularity Baseline** - Cold start users see globally popular items
+- [✓] **Item-to-Item Similarity** - Product detail pages show similar items based on features
+- [✓] **Session-Aware Reranking** - Recommendations adapt to current browsing session behavior
+- [✓] **Popularity Baseline** - Cold start users see globally popular items
 
 **What is NOT (Yet) Personalized:**
-- ⚠️ **User-Level Collaborative Filtering** - SVD model is trained but **limited by cold-start problem**:
+- [!] **User-Level Collaborative Filtering** - SVD model is trained but **limited by cold-start problem**:
   - **Root Cause:** Training data (RetailRocket user IDs) ≠ Production data (Atlas UUIDs)
   - **Current Behavior:** New users get popularity fallback (no history to learn from)
   - **Infrastructure:** Model loading, inference pipeline, and feature engineering are **production-ready**
@@ -62,11 +62,12 @@ This is an **intentional architectural decision** to prioritize deployment readi
 - **Event Distribution**: Views (96.7%), Add-to-Cart (2.5%), Purchase (0.8%)
 
 ### Model Performance
-- **LightGBM Ranker**: 16 features, ~18MB model size
+- **LightGBM Ranker**: 16 features, ~2.8MB model size
 - **SVD Matrix Factorization**: 10 latent factors, 1.4M user embeddings
 - **Item Similarity**: 132K items, 317K similarity pairs
 - **Training Split**: 80% train (1.7M events), 20% validation (429K events)
-- **Validation Metrics**: NDCG@10: 0.85-0.87, Time-based split to prevent leakage
+- **Validation Metrics**: Two-Stage Pipeline NDCG@10: 0.9932 (offline), Time-based split to prevent leakage  
+  *Note: Offline metric on test data; production expected lower*
 
 ### Inference Performance
 - **Average Latency**: <200ms per recommendation request
@@ -153,13 +154,15 @@ User Request (GET /api/v1/recommendations?user_id=X)
 │  STAGE 2: Feature Assembly                          │
 │  ├─ Load product metadata from database             │
 │  ├─ Compute features: price, category, popularity   │
-│  └─ Build feature matrix (100 x 15 features)        │
+│  └─ Build feature matrix (100 x 16 features)        │
 └─────────────────────────────────────────────────────┘
     ↓
 ┌─────────────────────────────────────────────────────┐
 │  STAGE 3: LightGBM Ranking (Precision)              │
 │  ├─ Predict relevance scores for 100 candidates     │
-│  ├─ Sort by score (NDCG@10: 0.999 on test set)      │
+│  ├─ Sort by score (NDCG@10: 0.999 offline)          │
+│  │   Note: Offline metric on curated test data;     │
+│  │   production performance expected to be lower    │
 │  └─ Top 20 products                                 │
 └─────────────────────────────────────────────────────┘
     ↓
@@ -195,7 +198,7 @@ Return JSON: [{id, name, price, image_url, category}]
 - **scikit-learn** - SVD (Truncated SVD collaborative filtering)
 - **LightGBM** - Gradient boosting ranker (NDCG optimization)
 - **NumPy/Pandas** - Feature engineering and data processing
-- **Surprise** (training only) - SVD model training with 100 latent factors
+- **Surprise** (training only) - SVD model training with 10 latent factors
 
 ### Infrastructure
 - **Docker** - Containerization (5 services)
@@ -376,7 +379,3 @@ This project is licensed under the **Apache License 2.0** - see the [LICENSE](LI
 **Documentation**: See `ARCHITECTURE.md`, `ML_SYSTEM.md`, `DEPLOYMENT.md`
 
 *Built to demonstrate end-to-end ML system design, cloud deployment, and production engineering practices.*
-
----
-
-**Last Updated**: January 2026

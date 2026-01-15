@@ -1,6 +1,6 @@
 # Data Card: Multi-Dataset E-commerce Platform
 
-**Dataset Name:** P1 Hybrid Dataset (RetailRocket + Amazon Product Metadata)  
+**Dataset Name:** Atlas Hybrid Dataset (RetailRocket + Amazon Product Metadata)  
 **Version:** 2.0  
 **Sources:**
 - **Behavior Data:** [Kaggle - RetailRocket Dataset](https://www.kaggle.com/datasets/retailrocket/ecommerce-dataset)
@@ -166,7 +166,7 @@ After processing in [01_retailrocket_eda.ipynb](../01_retailrocket_eda.ipynb):
 | `itemid` | 0 | 0% |
 | `transactionid` | 2,686,769 | 97.5% (expected, only purchases have transaction IDs) |
 
-**Verdict:** ✅ No unexpected nulls. Missing `transactionid` is normal (only purchases have transactions).
+**Verdict:** [✓] No unexpected nulls. Missing `transactionid` is normal (only purchases have transactions).
 
 ### Duplicates
 - **Duplicate rows:** 0 (verified in EDA notebook)
@@ -308,7 +308,7 @@ After feature engineering in [03_feature_engineering.ipynb](../03_feature_engine
 - Product categories evolved (e.g., smartwatches, VR headsets didn't exist)
 - Conversion rates may be outdated
 
-**Mitigation:** Fine-tune models on P1 production data after launch
+**Mitigation:** Fine-tune models on Atlas production data after launch
 
 ---
 
@@ -367,7 +367,7 @@ After feature engineering in [03_feature_engineering.ipynb](../03_feature_engine
 ## Privacy & Ethics
 
 ### Anonymization
-**Status:** ✅ Data is anonymized
+**Status:** [✓] Data is anonymized
 
 **Evidence:**
 - User IDs are integers (no PII: names, emails, addresses)
@@ -392,7 +392,7 @@ After feature engineering in [03_feature_engineering.ipynb](../03_feature_engine
 
 **Impact:** Cannot study fairness metrics (e.g., gender bias in recommendations)
 
-**Future Work:** Collect demographics in P1 production (with explicit consent)
+**Future Work:** Collect demographics in Atlas production (with explicit consent)
 
 ---
 
@@ -417,15 +417,15 @@ After feature engineering in [03_feature_engineering.ipynb](../03_feature_engine
 
 ## Use Cases
 
-### ✅ Approved Use Cases
+### [✓] Approved Use Cases
 1. **ML Model Training:** Pretrain recommender models on realistic behavior
 2. **Feature Engineering:** Validate feature tables produce useful signals
 3. **Offline Evaluation:** Establish baseline metrics (NDCG, Recall, Precision)
 4. **Algorithm Prototyping:** Test collaborative filtering, ranking, cold-start strategies
 
-### ❌ Prohibited Use Cases
+### [X] Prohibited Use Cases
 1. **Production Exposure:** Never show RetailRocket product IDs to end users
-2. **Direct Recommendation:** Do not recommend RetailRocket products to P1 users
+2. **Direct Recommendation:** Do not recommend RetailRocket products to Atlas users
 3. **Re-identification:** Do not attempt to reverse-engineer user identities
 4. **Discriminatory Purposes:** Do not use for biased targeting (no demographic data anyway)
 
@@ -437,8 +437,8 @@ After feature engineering in [03_feature_engineering.ipynb](../03_feature_engine
 **Current Version:** 1.0 (May-Sep 2015 events)
 
 **Future Versions:**
-- **1.1 (planned):** Add P1 production events (hybrid dataset)
-- **2.0 (planned):** Full P1 dataset (retire RetailRocket)
+- **1.1 (planned):** Add Atlas production events (hybrid dataset)
+- **2.0 (planned):** Full Atlas dataset (retire RetailRocket)
 
 ### Reprocessing
 **Frequency:** On-demand (if feature engineering logic changes)
@@ -449,9 +449,9 @@ After feature engineering in [03_feature_engineering.ipynb](../03_feature_engine
 - Model retraining requires updated features
 
 ### Deprecation
-**Expected:** January 2026 (after 6 months of P1 production data collected)
+**Expected:** January 2026 (after 6 months of Atlas production data collected)
 
-**Reason:** RetailRocket is pretraining data only. P1 production data will be more representative.
+**Reason:** RetailRocket is pretraining data only. Atlas production data will be more representative.
 
 ---
 
@@ -461,9 +461,9 @@ After feature engineering in [03_feature_engineering.ipynb](../03_feature_engine
 The `events` table stores user behavior events (view, click, add_to_cart, purchase) for **future analytics and retraining** when production reaches sufficient scale (>10K MAU).
 
 **Current Usage:**
-- ✅ **Written by:** catalog-service (direct PostgreSQL inserts)
-- ❌ **NOT used by training:** Training reads static RetailRocket parquet files
-- ❌ **NOT used by recommendations:** Recommendations use pre-trained models
+- [✓] **Written by:** catalog-service (direct PostgreSQL inserts)
+- [X] **NOT used by training:** Training reads static RetailRocket parquet files
+- [X] **NOT used by recommendations:** Recommendations use pre-trained models
 
 **Design Decision:** At demonstration scale (<1K users), event collection serves as infrastructure readiness. Training on production data becomes valuable at 50K+ events/day.
 
@@ -487,7 +487,7 @@ The `events` table stores user behavior events (view, click, add_to_cart, purcha
 
 ### Current Indexes
 
-**Status:** ❌ No indexes currently implemented.
+**Status:** [X] No indexes currently implemented.
 
 **Rationale:** At demonstration scale (<1K events), full table scans are acceptable. Indexes add write overhead without query benefit.
 
@@ -543,8 +543,7 @@ CREATE INDEX idx_events_properties ON events USING GIN (properties);
 
 ## Contact
 
-**Data Owner:** P1 ML Team  
-**Last Updated:** December 28, 2025  
+**Data Owner:** Atlas Project (Solo Developer)  
 **Dataset Version:** 1.0  
 **Next Review Date:** January 28, 2026
 

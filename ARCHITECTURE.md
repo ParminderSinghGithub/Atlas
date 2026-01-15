@@ -2,6 +2,8 @@
 
 **System Design and Component Interaction**
 
+> **Intended Audience**: This document is for engineers and technical interviewers seeking deep understanding of Atlas's system design, request flows, and architectural decisions.
+
 ---
 
 ## Table of Contents
@@ -164,7 +166,7 @@ Ingress → API Gateway → Recommendation Service
 │ For each candidate product ID:                              │
 │     • Query database for product details (name, price, etc) │
 │     • Compute features: price_log, category_id, popularity  │
-│     • Build feature matrix (100 products × 15 features)     │
+│     • Build feature matrix (100 products × 16 features)     │
 └─────────────────────────────────────────────────────────────┘
     ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -173,7 +175,9 @@ Ingress → API Gateway → Recommendation Service
 │ scores = lightgbm_ranker.predict(feature_matrix)            │
 │ • Model: 100 trees, 31 leaves, learning_rate=0.05          │
 │ • Objective: LambdaRank (NDCG optimization)                 │
-│ • Performance: NDCG@10 = 0.999 on test set                  │
+│ • Performance: NDCG@10 = 0.999 (offline)                    │
+│   Note: Offline metric on curated test data; production     │
+│   performance expected to be lower                          │
 │                                                              │
 │ ranked_products = sort_by_score(candidates, scores)         │
 │ top_20 = ranked_products[:20]                               │
@@ -795,5 +799,3 @@ Azure Traffic Manager → Region selector → AKS clusters (US, EU, Asia)
 ---
 
 **Next**: See [ML_SYSTEM.md](ML_SYSTEM.md) for detailed ML pipeline explanation.
-
-**Last Updated**: January 2026

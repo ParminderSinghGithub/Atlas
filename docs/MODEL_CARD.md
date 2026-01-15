@@ -19,9 +19,9 @@ Rank candidate products for personalized e-commerce recommendations. Given a use
 - **Output:** Sorted list of 10 products (highest predicted purchase probability first)
 
 ### Out-of-Scope Use
-- ❌ Candidate generation (use SVD/Item-Item for retrieval)
-- ❌ Cold-start users with 0 events (fallback to popularity baseline)
-- ❌ Explainable AI (requires SHAP values post-processing, not built-in)
+- [X] Candidate generation (use SVD/Item-Item for retrieval)
+- [X] Cold-start users with 0 events (fallback to popularity baseline)
+- [X] Explainable AI (requires SHAP values post-processing, not built-in)
 
 ---
 
@@ -157,7 +157,7 @@ num_boost_round = 100                 # 100 boosting iterations
 
 ---
 
-### ⚠️ Offline Metric Caveats
+### [!] Offline Metric Caveats
 
 **CRITICAL WARNING:** NDCG@10 = 0.9992 is **suspiciously high** and comes with important caveats:
 
@@ -301,7 +301,7 @@ model = lgb.train(
 
 **Impact:** May not generalize to US/EU markets with different behavior patterns
 
-**Mitigation:** Fine-tune on P1 production data after launch
+**Mitigation:** Fine-tune on Atlas production data after launch
 
 ---
 
@@ -418,8 +418,7 @@ model = lgb.Booster(model_file='artifacts/models/lightgbm_ranker.txt')
 
 ## Contact
 
-**Model Owner:** P1 ML Team  
-**Last Updated:** December 28, 2025  
+**Model Owner:** Atlas Project (Solo Developer)  
 **Model Version:** 1.0  
 **Next Review Date:** January 28, 2026 (monthly retraining)
 

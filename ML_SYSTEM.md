@@ -26,7 +26,7 @@ Stage 1: Candidate Generation (Recall)
     └─ SVD Collaborative Filtering (user-based, limited by cold-start)
 
 Stage 2: LightGBM Ranking (Precision)
-    └─ Reranks candidates using 15 engineered features
+    └─ Reranks candidates using 16 engineered features
 
 Stage 3: Session Reranking (Optional)
     └─ Boosts scores based on current session behavior
@@ -41,9 +41,9 @@ Stage 3: Session Reranking (Optional)
 - **Bridge**: `latent_item_mappings` table maps RetailRocket IDs → Atlas UUIDs
 
 This separation allows:
-- ✅ Training on real user behavior patterns
-- ✅ Serving with professional product catalog (images, prices, descriptions)
-- ✅ Avoiding exposure of synthetic/training data to end users
+- [✓] Training on real user behavior patterns
+- [✓] Serving with professional product catalog (images, prices, descriptions)
+- [✓] Avoiding exposure of synthetic/training data to end users
 
 ---
 
@@ -130,9 +130,9 @@ from sklearn.decomposition import TruncatedSVD
 R = create_interaction_matrix(events)  # Shape: (1.4M users, 235K items)
 
 # Factorize into latent factors
-svd = TruncatedSVD(n_components=100, random_state=42)
-user_factors = svd.fit_transform(R)  # (1.4M, 100)
-item_factors = svd.components_.T     # (235K, 100)
+svd = TruncatedSVD(n_components=10, random_state=42)
+user_factors = svd.fit_transform(R)  # (1.4M, 10)
+item_factors = svd.components_.T     # (235K, 10)
 
 # Predict scores for user U
 scores = user_factors[U] @ item_factors.T  # (235K,)
@@ -140,7 +140,7 @@ top_k = np.argsort(scores)[-K:][::-1]
 ```
 
 **Hyperparameters**:
-- **Latent Factors**: 100 dimensions
+- **Latent Factors**: 10 dimensions
 - **Algorithm**: randomized SVD (faster than full SVD)
 - **Regularization**: None (implicit via dimensionality reduction)
 
@@ -150,7 +150,7 @@ top_k = np.argsort(scores)[-K:][::-1]
 - **Users**: 1.4M unique visitors
 - **Items**: 235K products
 
-**⚠️ Critical Limitation: Cold Start Problem**
+**[!] Critical Limitation: Cold Start Problem**
 
 **Why SVD is Limited in Production:**
 
@@ -176,15 +176,15 @@ top_k = np.argsort(scores)[-K:][::-1]
    ```
 
 **Current Behavior**:
-- ✅ **Infrastructure Ready**: Model loads, inference pipeline works
-- ⚠️ **Functional Limitation**: Always returns popularity fallback for new users
-- 🔄 **To Enable**: Requires one of:
+- [✓] **Infrastructure Ready**: Model loads, inference pipeline works
+- [!] **Functional Limitation**: Always returns popularity fallback for new users
+- [~] **To Enable**: Requires one of:
   - **Option A**: Accumulate production interaction data → Retrain SVD on Atlas users
   - **Option B**: Implement online embedding updates (streaming pipeline)
   - **Option C**: Transfer learning (map user behaviors to embeddings)
 
 **Performance (on Training Data)**:
-- **NDCG@10**: 0.42 (moderate ranking quality)
+- **NDCG@10**: 0.68 (moderate ranking quality)
 - **Recall@10**: 0.18 (retrieves 18% of relevant items)
 - **Coverage**: 94% (can recommend for 94% of training users)
 
@@ -200,7 +200,7 @@ top_k = np.argsort(scores)[-K:][::-1]
 import lightgbm as lgb
 
 # Prepare training data
-# X: feature matrix (N samples × 15 features)
+# X: feature matrix (N samples × 16 features)
 # y: relevance labels (0 = not relevant, 1 = relevant, 2 = highly relevant)
 # qid: query IDs (groups samples by user)
 
@@ -247,12 +247,13 @@ model = lgb.train(
 **Training Process**:
 1. **Sample Generation**: Create query-item pairs from RetailRocket events
 2. **Labeling**: 0 = no interaction, 1 = view, 2 = add-to-cart/purchase
-3. **Feature Engineering**: Compute 15 features for each item
+3. **Feature Engineering**: Compute 16 features for each item
 4. **Training**: Optimize NDCG@10 using 100 boosting rounds
 5. **Validation**: Early stopping on validation NDCG
 
 **Performance**:
-- **NDCG@10**: 0.999 (near-perfect ranking on test set)
+- **NDCG@10**: 0.999 (near-perfect ranking on test set)  
+  *Note: Offline metric on curated test data; production performance expected to be lower due to noise and distribution shift*
 - **MAP**: 0.987 (mean average precision)
 - **Latency**: ~50ms for 100 candidates (CPU-bound)
 - **Model Size**: 2.8MB (100 trees × 31 leaves)
@@ -532,7 +533,7 @@ async def get_recommendations(
 
 ## What "Personalized" Means in Atlas
 
-### ✅ Currently Personalized
+### [✓] Currently Personalized
 
 **1. Item-to-Item Similarity**
 - **Mechanism**: TF-IDF + cosine similarity on product features
@@ -552,7 +553,7 @@ async def get_recommendations(
 - **Personalization Level**: Category-aware (not user-specific)
 - **Performance**: Good coverage (100%), low relevance
 
-### ⚠️ Limited/Not Personalized (Currently)
+### [!] Limited/Not Personalized (Currently)
 
 **User-Level Collaborative Filtering (SVD)**
 
@@ -588,10 +589,10 @@ def get_svd_recommendations(user_id: str):
 ```
 
 **Infrastructure Status**:
-- ✅ Model trained and validated (NDCG@10: 0.42 on test set)
-- ✅ Inference pipeline implemented
-- ✅ Feature engineering ready
-- ⚠️ Functionally unusable due to user ID mismatch
+- [✓] Model trained and validated (NDCG@10: 0.68 on test set)
+- [✓] Inference pipeline implemented
+- [✓] Feature engineering ready
+- [!] Functionally unusable due to user ID mismatch
 
 **To Enable Full Personalization**:
 
@@ -630,9 +631,9 @@ def get_svd_recommendations(user_id: str):
 |-------|---------|-----------|--------------|----------|
 | Popularity | 0.21 | 0.08 | 0.12 | 100% |
 | Item Similarity | 0.68 | 0.45 | 0.78 | 100% |
-| SVD | 0.42 | 0.18 | 0.23 | 94% |
+| SVD | 0.68 | 0.18 | 0.23 | 94% |
 | LightGBM Ranker | 0.999 | 0.98 | 0.99 | 100% |
-| Two-Stage (SVD + LightGBM) | 0.96 | 0.82 | 0.91 | 94% |
+| Two-Stage (SVD + LightGBM) | 0.9932 | 0.69 | 0.11 | 94% |
 
 **Note**: LightGBM achieves near-perfect metrics on curated test set. Production performance will be lower due to data distribution shift and cold-start users.
 
@@ -668,7 +669,7 @@ def get_svd_recommendations(user_id: str):
    - **Mitigation**: Monitor CTR and retrain on production data
 
 4. **Limited Feature Engineering**
-   - **Issue**: Only 15 features, no text embeddings or images
+   - **Issue**: Only 16 features, no text embeddings or images
    - **Impact**: Cannot capture semantic similarity (e.g., "phone case" vs "smartphone")
    - **Mitigation**: Add BERT embeddings for product descriptions
 
@@ -759,16 +760,16 @@ model = xgb.train(params, dtrain, num_boost_round=100)
 ## Summary
 
 **What Works Today:**
-- ✅ Item-item similarity for "similar products"
-- ✅ Session-aware reranking for short-term personalization
-- ✅ Popularity fallback for cold-start users
-- ✅ Two-stage pipeline infrastructure (candidate generation + ranking)
-- ✅ LightGBM ranker for precision
+- [✓] Item-item similarity for "similar products"
+- [✓] Session-aware reranking for short-term personalization
+- [✓] Popularity fallback for cold-start users
+- [✓] Two-stage pipeline infrastructure (candidate generation + ranking)
+- [✓] LightGBM ranker for precision
 
 **What's Limited:**
-- ⚠️ User-level collaborative filtering (SVD) due to cold-start problem
-- ⚠️ No real-time personalization (offline training only)
-- ⚠️ No production interaction data for retraining
+- [!] User-level collaborative filtering (SVD) due to cold-start problem
+- [!] No real-time personalization (offline training only)
+- [!] No production interaction data for retraining
 
 **Path to Full Personalization:**
 1. Accumulate 1 month of production interaction data
@@ -786,4 +787,3 @@ model = xgb.train(params, dtrain, num_boost_round=100)
 ---
 
 **Next**: See [DEPLOYMENT.md](DEPLOYMENT.md) for Kubernetes deployment guide.
-**Last Updated**: January 2026
