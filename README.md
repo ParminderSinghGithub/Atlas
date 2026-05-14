@@ -3,6 +3,7 @@
 **Production-grade recommendation system deployed on Azure Kubernetes Service**
 
 🌐 **Live Demo:** https://4-224-153-183.sslip.io/ (HTTPS enabled)
+>The live demo is temporarily unavailable due to expired Azure credits. It will be redeployed soon.
 
 [![Tech Stack](https://img.shields.io/badge/Stack-React%20%7C%20FastAPI%20%7C%20K8s-blue)]()
 [![ML Models](https://img.shields.io/badge/ML-SVD%20%7C%20LightGBM%20%7C%20Session--Aware-green)]()
