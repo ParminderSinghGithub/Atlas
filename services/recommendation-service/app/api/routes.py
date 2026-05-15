@@ -35,6 +35,11 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+def _catalog_service_base_url() -> str:
+    """Return a normalized catalog-service base URL."""
+    return settings.catalog_service_url.rstrip("/")
+
+
 def _safe_endpoint_context(**kwargs: Any) -> Dict[str, Any]:
     """Build a compact log context without empty values."""
     return {key: value for key, value in kwargs.items() if value is not None}
@@ -66,7 +71,7 @@ async def fetch_product_metadata(product_ids: List[UUID]) -> Dict[UUID, Dict[str
             for pid in product_ids:
                 try:
                     response = await client.get(
-                        f"{settings.catalog_service_url}/api/v1/catalog/products/{pid}"
+                        f"{_catalog_service_base_url()}/api/v1/catalog/products/{pid}"
                     )
                     if response.status_code == 200:
                         product_data = response.json()
@@ -512,7 +517,7 @@ async def generate_candidates(
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(
-                    f"{settings.catalog_service_url}/api/v1/catalog/products/{product_id}"
+                    f"{_catalog_service_base_url()}/api/v1/catalog/products/{product_id}"
                 )
                 if response.status_code == 200:
                     product_data = response.json()
@@ -522,7 +527,7 @@ async def generate_candidates(
                         logger.info(f"Product {product_id} belongs to category {category_id}, using category-based recommendations")
                         # Get products from same category as fallback
                         category_response = await client.get(
-                            f"{settings.catalog_service_url}/api/v1/catalog/products",
+                            f"{_catalog_service_base_url()}/api/v1/catalog/products",
                             params={"category_id": category_id, "per_page": k * 3}  # Get more than needed
                         )
                         if category_response.status_code == 200:

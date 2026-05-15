@@ -53,6 +53,7 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info(f"Starting {settings.service_name}...")
+    logger.info("Catalog metadata service URL: %s", settings.catalog_service_url.rstrip("/"))
     logger.info("="*70)
     logger.info("ML MODEL INITIALIZATION")
     logger.info("="*70)
