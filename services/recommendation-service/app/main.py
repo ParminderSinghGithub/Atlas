@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 import os
 
 from app.core.config import settings
+from app.core.config import get_catalog_service_url, get_catalog_service_url_source, validate_catalog_service_url
 from app.core.logging import setup_logging, get_logger
 from app.api.routes import router
 from app.models.lightgbm_ranker import get_ranker
@@ -53,7 +54,15 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info(f"Starting {settings.service_name}...")
-    logger.info("Catalog metadata service URL: %s", settings.catalog_service_url.rstrip("/"))
+    resolved_catalog_url = get_catalog_service_url()
+    catalog_source = get_catalog_service_url_source()
+    logger.info("Catalog metadata service URL: %s", resolved_catalog_url)
+    logger.info("Catalog metadata URL source: %s", catalog_source)
+    try:
+        validate_catalog_service_url(resolved_catalog_url)
+    except ValueError as exc:
+        logger.error("Catalog metadata URL validation failed: %s", exc)
+        raise
     logger.info("="*70)
     logger.info("ML MODEL INITIALIZATION")
     logger.info("="*70)

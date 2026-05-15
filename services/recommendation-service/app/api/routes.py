@@ -28,16 +28,11 @@ from app.features.loader import get_feature_loader
 from app.mapping.latent_mapper import get_latent_mapper
 from app.session.reranker import get_session_reranker
 from app.decisioning.rules import apply_all_rules
-from app.core.config import settings
+from app.core.config import settings, get_catalog_service_url
 from app.core.logging import get_logger, log_request, log_fallback, log_recommendation
 
 logger = get_logger(__name__)
 router = APIRouter()
-
-
-def _catalog_service_base_url() -> str:
-    """Return a normalized catalog-service base URL."""
-    return settings.catalog_service_url.rstrip("/")
 
 
 def _safe_endpoint_context(**kwargs: Any) -> Dict[str, Any]:
@@ -64,14 +59,24 @@ async def fetch_product_metadata(product_ids: List[UUID]) -> Dict[UUID, Dict[str
         return {}
     
     try:
+        base_url = get_catalog_service_url()
+        logger.info("Resolved catalog metadata base URL: %s", base_url)
+
         # Call catalog service through API gateway
         async with httpx.AsyncClient(timeout=5.0) as client:
             # Fetch products individually (catalog doesn't have batch endpoint)
             metadata = {}
             for pid in product_ids:
                 try:
+                    request_url = f"{base_url}/api/v1/catalog/products/{pid}"
+                    logger.info(
+                        "Fetching metadata from: %s | base_url=%s | product_id=%s",
+                        request_url,
+                        base_url,
+                        pid,
+                    )
                     response = await client.get(
-                        f"{_catalog_service_base_url()}/api/v1/catalog/products/{pid}"
+                        request_url
                     )
                     if response.status_code == 200:
                         product_data = response.json()
@@ -157,6 +162,7 @@ async def get_recommendations(
         )
     
     try:
+        logger.info("Resolved catalog metadata base URL: %s", get_catalog_service_url())
         # Step 1: Candidate Generation
         candidate_result = await generate_candidates(
             user_id=user_id,
@@ -516,8 +522,16 @@ async def generate_candidates(
         # Try to get product metadata first to extract category
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
+                base_url = get_catalog_service_url()
+                request_url = f"{base_url}/api/v1/catalog/products/{product_id}"
+                logger.info(
+                    "Fetching metadata from: %s | base_url=%s | product_id=%s",
+                    request_url,
+                    base_url,
+                    product_id,
+                )
                 response = await client.get(
-                    f"{_catalog_service_base_url()}/api/v1/catalog/products/{product_id}"
+                    request_url
                 )
                 if response.status_code == 200:
                     product_data = response.json()
@@ -526,8 +540,15 @@ async def generate_candidates(
                     if category_id:
                         logger.info(f"Product {product_id} belongs to category {category_id}, using category-based recommendations")
                         # Get products from same category as fallback
+                        category_request_url = f"{base_url}/api/v1/catalog/products"
+                        logger.info(
+                            "Fetching metadata from: %s | base_url=%s | category_id=%s",
+                            category_request_url,
+                            base_url,
+                            category_id,
+                        )
                         category_response = await client.get(
-                            f"{_catalog_service_base_url()}/api/v1/catalog/products",
+                            category_request_url,
                             params={"category_id": category_id, "per_page": k * 3}  # Get more than needed
                         )
                         if category_response.status_code == 200:

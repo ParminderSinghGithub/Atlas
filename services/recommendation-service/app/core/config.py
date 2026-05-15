@@ -9,6 +9,9 @@ Environment variables:
 - MODEL_VERSION: Model version to load (default: latest)
 - LOG_LEVEL: Logging level (default: INFO)
 """
+import os
+from urllib.parse import urlparse
+
 from pydantic_settings import BaseSettings
 from typing import Optional
 from pathlib import Path
@@ -64,6 +67,34 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+
+def get_catalog_service_url() -> str:
+    """Return the normalized catalog service base URL for request construction."""
+    normalized = settings.catalog_service_url.strip().rstrip("/")
+    if normalized.endswith("/api/v1/catalog"):
+        normalized = normalized[: -len("/api/v1/catalog")].rstrip("/")
+    return normalized
+
+
+def get_catalog_service_url_source() -> str:
+    """Describe whether the catalog URL came from env or default settings."""
+    raw_env = os.getenv("CATALOG_SERVICE_URL")
+    if raw_env is None:
+        return f"default fallback ({settings.catalog_service_url})"
+    if not raw_env.strip():
+        return "empty environment override"
+    return "environment override"
+
+
+def validate_catalog_service_url(url: str) -> None:
+    """Fail fast on empty or protocol-less catalog URLs."""
+    if not url:
+        raise ValueError("CATALOG_SERVICE_URL resolved to an empty string")
+
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        raise ValueError(f"CATALOG_SERVICE_URL must include protocol and host: {url!r}")
 
 
 def get_model_path(filename: str) -> Path:
