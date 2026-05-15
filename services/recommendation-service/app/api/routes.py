@@ -443,6 +443,14 @@ async def generate_candidates(
     # Strategy 1: Product-based similarity (ACTIVATED)
     if product_id is not None:
         logger.info(f"Product-based recommendations requested for {product_id}")
+
+        if settings.disable_similarity_model:
+            logger.warning("Similarity recommender disabled for deployment mode.")
+            logger.info("Skipping item-similarity path and falling back to popularity")
+            popularity_model = get_popularity_model()
+            if not popularity_model.is_available():
+                popularity_model.load()
+            return ("popularity", popularity_model.get_top_k(k))
         
         # Try to get product metadata first to extract category
         try:

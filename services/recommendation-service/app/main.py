@@ -86,8 +86,11 @@ async def lifespan(app: FastAPI):
         logger.info("[3/5] Loading Item-Item Similarity...")
         similarity = get_similarity_model()
         try:
-            similarity.load()
-            logger.info(f"  PASS Similarity | items={len(similarity.similarity_dict)}")
+            if settings.disable_similarity_model:
+                logger.warning("  SKIP Similarity | Similarity recommender disabled for deployment mode.")
+            else:
+                similarity.load()
+                logger.info(f"  PASS Similarity | items={len(similarity.similarity_dict)}")
         except Exception as e:
             logger.error(f"  FAIL Similarity: {e}")
             if settings.enable_item_similarity:

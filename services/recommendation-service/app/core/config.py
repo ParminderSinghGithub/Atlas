@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     enable_item_similarity: bool = True
     enable_lightgbm_ranking: bool = True
     render_deployment_mode: bool = False
+    disable_similarity_model: bool = False
     
     class Config:
         env_file = ".env"

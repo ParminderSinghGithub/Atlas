@@ -46,6 +46,11 @@ class SimilarityModel:
         """
         if self.similarity_dict is not None:
             return  # Already loaded
+
+        if settings.disable_similarity_model:
+            logger.warning("Similarity recommender disabled for deployment mode.")
+            self.similarity_dict = None
+            return
         
         try:
             logger.info(f"Loading item-item similarity from {self.model_path}")
@@ -89,8 +94,14 @@ class SimilarityModel:
         - Allows fallback to category popularity
         - More honest than returning random items
         """
+        if settings.disable_similarity_model:
+            return None
+
         if self.similarity_dict is None:
             self.load()
+
+        if self.similarity_dict is None:
+            return None
         
         # Convert item_id to string (similarity dict uses string keys)
         item_id_str = str(item_id)
