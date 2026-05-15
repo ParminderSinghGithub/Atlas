@@ -19,10 +19,13 @@
 
 ## High-Level Architecture
 
+Active production runs on Vercel + Render + Neon + Upstash. The Azure AKS topology below is retained as previous deployment documentation/history and architectural evidence.
+
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                          USERS (Web Browser)                            │
-│                   https://4-224-153-183.sslip.io                       │
+│      Active: https://atlas-six-roan.vercel.app/                        │
+│      Previous: https://4-224-153-183.sslip.io (Azure AKS history)      │
 └─────────────────────────────────┬──────────────────────────────────────┘
                                   │ HTTPS (TLS 1.3)
                                   │ Let's Encrypt Certificate
@@ -85,19 +88,13 @@
 ### 1. Frontend Page Load
 
 ```
-User navigates to https://4-224-153-183.sslip.io/
+User navigates to https://atlas-six-roan.vercel.app/
     ↓
-NGINX Ingress (TLS termination, decrypts HTTPS)
+Vercel serves frontend
     ↓
-Routes to frontend service (port 80)
-    ↓
-Nginx serves React SPA (static files: index.html, JS bundles, CSS)
-    ↓
-Browser executes React app
+Frontend calls API gateway on Render (/api base URL)
     ↓
 Frontend makes API call: GET /api/v1/catalog/products?limit=48
-    ↓
-NGINX Ingress routes /api/* to API Gateway (port 8000)
     ↓
 API Gateway proxies to catalog-service:5004
     ↓
@@ -108,6 +105,8 @@ Returns JSON: {products: [{id, name, price, currency, category, image_url}]}
     ↓
 Frontend renders product grid
 ```
+
+Historical Azure ingress flow is retained elsewhere in this document for deployment evidence.
 
 ### 2. User Registration Flow
 
@@ -219,6 +218,18 @@ Frontend renders recommendation carousel
 ---
 
 ## ML Inference Pipeline
+
+### Active Cloud Runtime Mode
+
+Active cloud deployment uses a deployment-optimized inference mode:
+
+- Popularity serving + latent mapping + catalog metadata hydration are active.
+- Feature-table loading is disabled in constrained cloud mode.
+- Similarity model loading is disabled in constrained cloud mode.
+- SVD is optional/fallback-safe.
+- LightGBM ranking is disabled when feature tables are disabled.
+
+Local/full-capacity environments still support the full LightGBM/similarity/SVD/feature-table pipeline.
 
 ### Model Loading (Service Startup)
 

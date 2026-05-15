@@ -2,6 +2,10 @@
 
 **From Local Development to Azure Kubernetes Service**
 
+> **Current Status**:
+> - Active production deployment uses Vercel (frontend) + Render (backend) + Neon PostgreSQL + Upstash Redis.
+> - Azure AKS instructions are preserved as previous deployment history and architecture evidence.
+
 > **Important Notes**:  
 > - Azure CLI commands assume a Unix-like shell (bash/zsh). Windows users should use Git Bash, WSL, or adapt commands for PowerShell.  
 > - Current deployment is intentionally manual to demonstrate infrastructure knowledge. CI/CD automation is planned as a future enhancement.
@@ -742,11 +746,16 @@ az aks check-acr --resource-group atlas-rg --name atlas-aks --acr atlasacrp1
 
 ---
 
-**Next Steps**: Test application at https://4-224-153-183.sslip.io/, then iterate based on user feedback and performance metrics.
+**Next Steps**: Test active frontend at https://atlas-six-roan.vercel.app/, then iterate based on user feedback and performance metrics. The previous Azure endpoint remains documented for deployment history.
 
 ---
 
 ## Render, Vercel, Neon, and Upstash Deployment Blueprint
+
+### Active Production Endpoint
+
+- Frontend (Vercel): https://atlas-six-roan.vercel.app/
+- Backend services run as public Render web services (dashboard-managed URLs)
 
 ### Render Blueprint Scope
 
@@ -772,9 +781,11 @@ Optional:
 - None used by the current code
 
 Example production values:
-- `https://user-service.onrender.com`
-- `https://catalog-service.onrender.com`
-- `https://recommendation-service.onrender.com`
+- `https://<user-service-render-url>`
+- `https://<catalog-service-render-url>`
+- `https://<recommendation-service-render-url>` (example active pattern: `https://recommendation-service-8ag0.onrender.com`)
+
+Use exact Render dashboard URLs for each backend service. Do not assume `https://<service>.onrender.com` if Render assigned a suffixed hostname.
 
 Dependencies:
 - User service
@@ -846,12 +857,19 @@ Optional:
 - `ENABLE_SVD`
 - `ENABLE_ITEM_SIMILARITY`
 - `ENABLE_LIGHTGBM_RANKING`
+- `RENDER_DEPLOYMENT_MODE`
+- `DISABLE_FEATURE_TABLES`
+- `DISABLE_SIMILARITY_MODEL`
 
 Example production values:
 - `DATABASE_URL` copied from Neon
-- `CATALOG_SERVICE_URL=https://catalog-service.onrender.com`
+- `CATALOG_SERVICE_URL=https://<catalog-service-render-url>`
 - `REDIS_URL=rediss://...` from Upstash
 - `MODEL_VERSION=production_v1`
+- `RENDER_DEPLOYMENT_MODE=true`
+- `DISABLE_FEATURE_TABLES=true`
+- `DISABLE_SIMILARITY_MODEL=true`
+- `ENABLE_LIGHTGBM_RANKING=true`
 
 Dependencies:
 - Neon PostgreSQL
@@ -906,6 +924,9 @@ Vercel:
 - Build command: `npm run build`
 - Output directory: `dist`
 
+Example production value:
+- `VITE_API_URL=https://<api-gateway-render-url>/api`
+
 Upstash:
 - Create a Redis database
 - Copy the secure `rediss://` connection string into `REDIS_URL`
@@ -932,6 +953,19 @@ If you run them from Render shell, use the same commands inside each service dir
 - Free-tier services can sleep when idle, which increases first-request latency.
 - The recommendation service may need extra startup time because it loads models, Parquet features, and a database connection pool initialization path.
 - Neon and Upstash are external managed services, so network latency becomes part of end-to-end request time.
+
+### Deployment-Optimized Inference Mode (Production)
+
+Production cloud deployment intentionally uses a deployment-optimized inference mode:
+
+- Popularity-based serving remains active.
+- Latent item mappings remain DB-driven.
+- Catalog metadata hydration remains active.
+- `DISABLE_FEATURE_TABLES=true` in constrained cloud mode.
+- `DISABLE_SIMILARITY_MODEL=true` in constrained cloud mode.
+- `ENABLE_LIGHTGBM_RANKING=true` remains configurable; ranking is effectively constrained when feature tables are disabled.
+
+Full ranking/similarity/feature-table stack remains available in local and full-capacity deployments.
 
 ### Notes on Unused Deployment Artifacts
 

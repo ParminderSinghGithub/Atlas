@@ -32,6 +32,20 @@ Stage 3: Session Reranking (Optional)
     └─ Boosts scores based on current session behavior
 ```
 
+### Deployment-Optimized Inference Mode (Active Production)
+
+The active cloud deployment runs a deployment-optimized inference mode for infrastructure efficiency:
+
+- Popularity-based recommendation serving is the primary path.
+- Latent item mappings remain active via PostgreSQL.
+- Catalog metadata hydration remains active during serving.
+- Feature-table loading is disabled in constrained cloud mode.
+- Similarity model loading is disabled in constrained cloud mode.
+- SVD remains optional and fallback-safe.
+- LightGBM ranking is disabled when feature tables are disabled.
+
+This is an intentional deployment strategy, not a model failure. The full pipeline remains available in local/full-capacity environments.
+
 ### Key Architectural Decision
 
 **Training Data ≠ Production Data**

@@ -1,13 +1,19 @@
 # Atlas - ML-Powered E-Commerce Platform
 
-**Production-grade recommendation system deployed on Azure Kubernetes Service**
+**Production-grade recommendation platform with active Render/Vercel deployment and preserved Azure AKS history**
 
-🌐 **Live Demo:** https://4-224-153-183.sslip.io/ (HTTPS enabled)
->The live demo is temporarily unavailable due to expired Azure credits. It will be redeployed soon.
+🌐 **Live Frontend (Active Production):** https://atlas-six-roan.vercel.app/
+
+🌐 **Previous Deployment (Retained for Documentation/History):** https://4-224-153-183.sslip.io/ (Azure AKS + NGINX Ingress)
+
+Azure AKS documentation remains in this repository as architecture/deployment evidence. The active live deployment moved to Render/Vercel/Neon due to resource constraints, infrastructure migration, and deployment optimization for free-tier operations.
 
 [![Tech Stack](https://img.shields.io/badge/Stack-React%20%7C%20FastAPI%20%7C%20K8s-blue)]()
 [![ML Models](https://img.shields.io/badge/ML-SVD%20%7C%20LightGBM%20%7C%20Session--Aware-green)]()
-[![Deployment](https://img.shields.io/badge/Deployment-Azure%20AKS-orange)]()
+[![Deployment](https://img.shields.io/badge/Deployment-Render%20%2B%20Vercel-blue)]()
+[![History](https://img.shields.io/badge/History-Azure%20AKS-orange)]()
+
+![Atlas Demo](demo.gif)
 
 ---
 
@@ -18,10 +24,36 @@ Atlas is a **cloud-native e-commerce platform** with an integrated machine learn
 - **React Frontend** with real-time product browsing and personalized recommendations
 - **Microservices Backend** (FastAPI) with JWT authentication and catalog management
 - **ML Recommendation System** using collaborative filtering (SVD), gradient boosting (LightGBM), and session-aware reranking
-- **Production Deployment** on Azure Kubernetes Service with NGINX Ingress and HTTPS (Let's Encrypt)
+- **Active Production Deployment** on Vercel + Render with Neon PostgreSQL and Upstash Redis
+- **Historical Deployment Evidence** on Azure Kubernetes Service with NGINX Ingress and HTTPS (retained in docs)
 - **Real Product Catalog** with 2,000 Amazon products across 4 categories
 
 The system bridges **offline training** (RetailRocket behavioral dataset) with **online serving** (Amazon product catalog) through a latent mapping layer, enabling realistic recommendations without exposing training data.
+
+---
+
+## Current Live Deployment (Active)
+
+- **Frontend (Vercel)**: https://atlas-six-roan.vercel.app/
+- **API Gateway (Render)**: Public Render web service (dashboard-managed URL)
+- **Catalog Service (Render)**: Public Render web service (dashboard-managed URL)
+- **Recommendation Service (Render)**: Public Render web service (dashboard-managed URL)
+- **User Service (Render)**: Public Render web service (dashboard-managed URL)
+- **Primary Production Database**: Neon PostgreSQL
+
+### Recommendation Serving Mode in Production
+
+The active cloud deployment runs a **deployment-optimized inference mode**:
+
+- Popularity-based recommendation serving is always available.
+- Latent item mappings are loaded dynamically from PostgreSQL.
+- Catalog metadata hydration is performed at request time.
+- Feature-table loading is disabled in constrained production mode.
+- Similarity model loading is disabled in lightweight deployment mode.
+- SVD is optional and fallback-safe.
+- LightGBM ranking is disabled in constrained deployment mode.
+
+This mode is intentional for reliability on constrained infrastructure. It is not a broken state.
 
 ---
 
@@ -71,17 +103,18 @@ This is an **intentional architectural decision** to prioritize deployment readi
   *Note: Offline metric on test data; production expected lower*
 
 ### Inference Performance
-- **Average Latency**: <200ms per recommendation request
-- **Candidate Generation**: <100ms (SVD/Similarity lookup)
-- **Feature Assembly**: <50ms (batch product metadata fetch)
-- **Ranking**: <50ms (LightGBM scoring for 50 candidates)
-- **Model Memory Footprint**: ~103MB (all models loaded)
+- **Local Full Pipeline (Reference)**: <200ms target when all artifacts/features are enabled
+- **Cloud Deployment-Optimized Mode**: latency depends on cold starts + cross-service metadata hydration
+- **Candidate Generation**: popularity + mapping path prioritized in constrained production mode
+- **Ranking**: LightGBM disabled in constrained production mode
+- **Model Memory Footprint**: full model stack remains available for local/full deployment paths
 
 ### Architecture Metrics
 - **Microservices**: 5 backend services + 1 frontend
-- **Deployment**: 7 pods on Azure Kubernetes Service
-- **Database**: PostgreSQL with 2K products, Redis for sessions
-- **Containers**: 5 Docker images in Azure Container Registry
+- **Active Production Deployment**: Vercel frontend + Render backend services
+- **Historical Deployment**: Azure AKS manifests and architecture retained for documentation/history
+- **Database**: Neon PostgreSQL (production), local PostgreSQL for local workflows
+- **Redis**: Upstash Redis (production), local Redis for local workflows
 
 ---
 
@@ -203,11 +236,8 @@ Return JSON: [{id, name, price, image_url, category}]
 
 ### Infrastructure
 - **Docker** - Containerization (5 services)
-- **Kubernetes** - Orchestration (Azure AKS)
-- **NGINX Ingress** - Load balancing and routing
-- **cert-manager** - Automated TLS certificate management (Let's Encrypt)
-- **Azure Container Registry** - Image storage
-- **Azure Kubernetes Service** - Managed Kubernetes orchestration
+- **Active Production** - Vercel + Render + Neon PostgreSQL + Upstash Redis
+- **Historical Deployment (Retained)** - Kubernetes (Azure AKS) + NGINX Ingress + cert-manager + Azure Container Registry
 
 ---
 
@@ -261,7 +291,68 @@ docker exec infra-db-1 bash -c "apt-get update && apt-get install -y python3 pyt
 
 ## Deployment Summary
 
+### Active Production Deployment
+
+- **Frontend (Vercel)**: https://atlas-six-roan.vercel.app/
+- **Backend Services (Render)**: api-gateway, user-service, catalog-service, recommendation-service
+- **Database (Neon)**: shared PostgreSQL for user/catalog/recommendation services
+- **Redis (Upstash)**: session-aware recommendation support
+
+### Deployment Constraints and Engineering Decisions
+
+- Render free-tier services run with approximately 512MB memory, so startup and model-loading budgets are tight.
+- To keep production stable, heavyweight feature tables and similarity loading are selectively disabled in cloud mode.
+- The platform remains functionally complete for browse, auth, catalog, and recommendation delivery using deployment-optimized inference.
+- The full ML stack remains available locally:
+  - LightGBM ranking
+  - Similarity recommender
+  - Feature tables
+  - SVD model
+
+### Production Database and Seeding Workflow
+
+Production uses Neon PostgreSQL. Database schema and data bootstrapping are independent steps and should be run in this order:
+
+1. Run migrations for user-service and catalog-service.
+2. Ingest Amazon catalog export files.
+3. Seed catalog entities (sellers, categories, products).
+4. Populate latent item mappings.
+5. Deploy/restart services after environment and schema are ready.
+
+Reference commands:
+
+```bash
+cd services/user-service && alembic upgrade head
+cd ../catalog-service && alembic upgrade head
+
+python tools/amazon-integration/ingest_amazon_catalog.py
+python tools/amazon-integration/amazon_category_mapper.py
+python tools/amazon-integration/seed_catalog_from_amazon.py
+python tools/amazon-integration/update_latent_item_mappings.py
+```
+
+### Production Environment Variables (Active)
+
+- `CATALOG_SERVICE_URL`
+- `RECOMMENDATION_SERVICE_URL`
+- `DATABASE_URL`
+- `RENDER_DEPLOYMENT_MODE`
+- `DISABLE_FEATURE_TABLES`
+- `DISABLE_SIMILARITY_MODEL`
+- `ENABLE_LIGHTGBM_RANKING`
+- `SERVICE_PORT`
+- `VITE_API_URL`
+
+### Known Deployment Limitations
+
+- Free-tier cold starts can add startup and first-request latency.
+- Cloud production runs deployment-optimized inference mode for memory safety.
+- Recommendation latency depends on cross-service metadata hydration and managed-service network hops.
+- Email OTP/welcome-mail flows are not part of the current production auth path.
+
 ### Azure AKS Setup
+
+**Previous deployment (retained for documentation/history)**
 
 The platform is deployed on **Azure Kubernetes Service** with the following configuration:
 
@@ -339,7 +430,7 @@ The platform is deployed on **Azure Kubernetes Service** with the following conf
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Detailed system design and component interaction
 - **[ML_SYSTEM.md](ML_SYSTEM.md)** - Machine learning pipeline, models, and evaluation
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Kubernetes deployment guide and Azure setup
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Historical Azure deployment guide plus active Render/Vercel/Neon blueprint
 
 ---
 
@@ -376,7 +467,8 @@ This project is licensed under the **Apache License 2.0** - see the [LICENSE](LI
 
 ## Contact
 
-**Live Demo**: https://4-224-153-183.sslip.io/  
+**Live Demo (Active Production Frontend)**: https://atlas-six-roan.vercel.app/  
+**Previous Deployment (Documentation/History)**: https://4-224-153-183.sslip.io/  
 **Documentation**: See `ARCHITECTURE.md`, `ML_SYSTEM.md`, `DEPLOYMENT.md`
 
 *Built to demonstrate end-to-end ML system design, cloud deployment, and production engineering practices.*
