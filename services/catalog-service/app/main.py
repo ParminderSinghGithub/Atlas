@@ -7,7 +7,8 @@ from contextlib import asynccontextmanager
 from sqlalchemy import text
 
 from app.core.config import settings
-from app.db.session import SessionLocal
+from app.db.session import Base, SessionLocal, engine
+import app.db.models  # noqa: F401 - ensure SQLAlchemy models are registered on Base.metadata
 from app.api.routes import products, categories, sellers, health, events
 
 
@@ -17,6 +18,15 @@ async def lifespan(app: FastAPI):
     Startup/shutdown lifecycle events.
     Tests database connection on startup.
     """
+    # Startup: Ensure database schema exists for first deployment
+    print("Schema initialization starting for catalog service...")
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("✓ Schema initialization succeeded")
+    except Exception as e:
+        print(f"✗ Schema initialization failed: {e}")
+        raise
+
     # Startup: Test database connection
     db = SessionLocal()
     try:
