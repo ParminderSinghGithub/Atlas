@@ -25,6 +25,7 @@ Usage:
 """
 import sys
 import json
+import os
 from pathlib import Path
 from uuid import uuid5, UUID, NAMESPACE_DNS
 from decimal import Decimal
@@ -35,14 +36,24 @@ import asyncio
 catalog_service_path = Path(__file__).parent.parent.parent / "services" / "catalog-service"
 sys.path.insert(0, str(catalog_service_path))
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from app.db.models import Base, Category, Seller, Product
 
-# Use direct database URL instead of settings
-DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/ecommerce"
+LOCAL_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/ecommerce"
+
+
+def get_database_url() -> str:
+    """Resolve database URL from environment with local fallback."""
+    return os.getenv("DATABASE_URL") or LOCAL_DATABASE_URL
+
+
+def describe_database_target(database_url: str) -> str:
+    """Return a short description of the database target."""
+    if "localhost" in database_url or "127.0.0.1" in database_url:
+        return "local"
+    return "remote/Neon"
 
 
 def make_uuid(namespace: str, name: str) -> UUID:
@@ -66,7 +77,8 @@ class CatalogSeeder:
     
     async def connect(self):
         """Create async database connection."""
-        print("Connecting to database...")
+        print(f"Connecting to database ({describe_database_target(self.database_url)})...")
+        print(f"  Target host: {self.database_url.split('@')[-1]}")
         self.engine = create_async_engine(
             self.database_url,
             echo=False,  # Set to True for SQL debugging
@@ -379,8 +391,9 @@ async def main():
     print(f"✓ Loaded {len(products)} products")
     print(f"✓ Loaded {len(category_mappings['categories'])} categories")
     
-    # Database URL (use environment variable or default)
-    database_url = DATABASE_URL
+    # Database URL (env first, localhost fallback for local development)
+    database_url = get_database_url()
+    print(f"Database target: {describe_database_target(database_url)}")
     print(f"\nDatabase: {database_url.split('@')[-1]}")  # Hide credentials
     
     # Run seeding
@@ -393,6 +406,7 @@ async def main():
         await seeder.close()
     
     print("\n✓ Catalog seeding complete")
+    print(f"  Summary: products={len(products)} | categories={len(category_mappings['categories'])} | target={describe_database_target(database_url)}")
     return 0
 
 

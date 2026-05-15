@@ -32,6 +32,7 @@ Usage:
 """
 import sys
 import pickle
+import os
 from pathlib import Path
 from uuid import UUID, uuid4
 from decimal import Decimal
@@ -43,15 +44,26 @@ import json
 catalog_service_path = Path(__file__).parent.parent.parent / "services" / "catalog-service"
 sys.path.insert(0, str(catalog_service_path))
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 import pandas as pd
 import numpy as np
 
 from app.db.models import LatentItemMapping
 
-# Use direct database URL
-DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/ecommerce"
+LOCAL_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/ecommerce"
+
+
+def get_database_url() -> str:
+    """Resolve database URL from environment with local fallback."""
+    return os.getenv("DATABASE_URL") or LOCAL_DATABASE_URL
+
+
+def describe_database_target(database_url: str) -> str:
+    """Return a short description of the database target."""
+    if "localhost" in database_url or "127.0.0.1" in database_url:
+        return "local"
+    return "remote/Neon"
 
 
 class LatentMappingUpdater:
@@ -82,7 +94,8 @@ class LatentMappingUpdater:
     
     async def connect(self):
         """Create async database connection."""
-        print("Connecting to database...")
+        print(f"Connecting to database ({describe_database_target(self.database_url)})...")
+        print(f"  Target host: {self.database_url.split('@')[-1]}")
         self.engine = create_async_engine(
             self.database_url,
             echo=False,
@@ -303,20 +316,19 @@ class LatentMappingUpdater:
             mappings: List of mapping dicts
         """
         print("\n=== Saving Mappings to Database ===")
-        
-        # Clear existing mappings
-        print("  Clearing existing mappings...")
-        await session.execute(text("DELETE FROM latent_item_mappings"))
-        await session.flush()
-        
-        # Insert new mappings
-        print(f"  Inserting {len(mappings)} mappings...")
+        print(f"  Upserting {len(mappings)} mappings...")
         
         for idx, mapping in enumerate(mappings):
             stmt = text("""
                 INSERT INTO latent_item_mappings 
                 (id, latent_item_id, product_id, confidence_score, mapping_strategy, mapping_metadata)
                 VALUES (:id, :latent_item_id, :product_id, :confidence_score, :mapping_strategy, CAST(:mapping_metadata AS jsonb))
+                ON CONFLICT (latent_item_id) DO UPDATE SET
+                    product_id = EXCLUDED.product_id,
+                    confidence_score = EXCLUDED.confidence_score,
+                    mapping_strategy = EXCLUDED.mapping_strategy,
+                    mapping_metadata = EXCLUDED.mapping_metadata,
+                    updated_at = NOW()
             """)
             
             await session.execute(stmt, {
@@ -412,7 +424,8 @@ async def main():
         return 1
     
     # Database URL
-    database_url = DATABASE_URL
+    database_url = get_database_url()
+    print(f"Database target: {describe_database_target(database_url)}")
     print(f"Database: {database_url.split('@')[-1]}")
     
     # Run updater
