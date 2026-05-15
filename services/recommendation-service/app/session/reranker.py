@@ -104,7 +104,6 @@ class SessionReranker:
             redis_client = await redis.from_url(
                 redis_url,
                 encoding="utf-8",
-                logger.exception("Failed to connect to Redis for session tracking")
                 socket_connect_timeout=2
             )
             
@@ -114,8 +113,8 @@ class SessionReranker:
             
             return cls(redis_client=redis_client)
         
-        except Exception as e:
-            logger.warning(f"Failed to connect to Redis: {e}")
+        except Exception:
+            logger.exception("Failed to connect to Redis for session tracking")
             return cls(redis_client=None)
     
     def _session_key(self, user_id: str) -> str:
@@ -226,8 +225,8 @@ class SessionReranker:
             
             return signals
         
-        except Exception as e:
-                logger.exception("Failed to load session signals | user_id=%s", user_id)
+        except Exception:
+            logger.exception("Failed to load session signals | user_id=%s", user_id)
             return None
     
     async def _save_signals(self, user_id: str, signals: SessionSignals):
@@ -248,9 +247,8 @@ class SessionReranker:
                 self.SESSION_TTL,
                 json.dumps(data)
             )
-                    logger.exception("Failed to save session signals | user_id=%s", user_id)
-        except Exception as e:
-            logger.warning(f"Failed to save session signals: {e}")
+        except Exception:
+            logger.exception("Failed to save session signals | user_id=%s", user_id)
     
     async def apply_session_boost(
         self,
