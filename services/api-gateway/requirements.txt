@@ -1,4 +1,4 @@
 fastapi
-uvicorn[standard]
 httpx
-pydantic-settings
+pydantic-settings>=2.7,<3
+uvicorn[standard]

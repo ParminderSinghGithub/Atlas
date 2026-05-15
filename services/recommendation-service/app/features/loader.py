@@ -35,6 +35,7 @@ class FeatureLoader:
     
     def __init__(self):
         self.artifacts_path = Path(settings.artifacts_path)
+        self.render_deployment_mode = settings.render_deployment_mode
         
         # Feature DataFrames (indexed by ID for fast lookup)
         self.user_features: Optional[pd.DataFrame] = None
@@ -56,12 +57,26 @@ class FeatureLoader:
         - Fails fast if files missing
         """
         logger.info("Loading feature tables from Parquet...")
+        if self.render_deployment_mode:
+            logger.info("Render deployment mode enabled: using memory-optimized feature loading")
         
         try:
             # Load user features
             user_path = self.artifacts_path / "features" / "retailrocket" / "user_features.parquet"
             if user_path.exists():
-                self.user_features = pd.read_parquet(user_path)
+                user_columns = [
+                    "user_id",
+                    "total_events",
+                    "unique_products_interacted",
+                    "unique_sessions",
+                    "add_to_cart_count",
+                    "purchase_count",
+                    "views_count",
+                    "recency_days",
+                ]
+                load_columns = user_columns if self.render_deployment_mode else None
+                self.user_features = pd.read_parquet(user_path, columns=load_columns)
+                self.user_features = self._normalize_feature_ids(self.user_features, "user_id")
                 self.user_features.set_index('user_id', inplace=True)
                 self.user_feature_cols = [c for c in self.user_features.columns if c != 'user_id']
                 logger.info(f"Loaded user features | rows={len(self.user_features)} | cols={len(self.user_feature_cols)}")
@@ -71,7 +86,18 @@ class FeatureLoader:
             # Load item features
             item_path = self.artifacts_path / "features" / "retailrocket" / "item_features.parquet"
             if item_path.exists():
-                self.item_features = pd.read_parquet(item_path)
+                item_columns = [
+                    "product_id",
+                    "total_add_to_cart",
+                    "total_purchases",
+                    "total_views",
+                    "popularity_score",
+                    "conversion_rate",
+                    "recency_days",
+                ]
+                load_columns = item_columns if self.render_deployment_mode else None
+                self.item_features = pd.read_parquet(item_path, columns=load_columns)
+                self.item_features = self._normalize_feature_ids(self.item_features, "product_id", "item_id")
                 # Handle column name variations (item_id or product_id)
                 if 'product_id' in self.item_features.columns:
                     self.item_features.set_index('product_id', inplace=True)
@@ -100,6 +126,36 @@ class FeatureLoader:
         except Exception as e:
             logger.error(f"Failed to load feature tables: {e}")
             raise
+
+    def _normalize_feature_ids(self, features_df: pd.DataFrame, *id_columns: str) -> pd.DataFrame:
+        """
+        Normalize feature-table IDs for lower memory usage.
+
+        In Render deployment mode the RetailRocket IDs are stored as integers
+        instead of object strings, which substantially reduces RAM.
+        """
+        df = features_df
+
+        for id_column in id_columns:
+            if id_column in df.columns:
+                df[id_column] = pd.to_numeric(df[id_column], downcast='integer')
+
+        numeric_columns = df.select_dtypes(include=['int64', 'float64']).columns
+        for column in numeric_columns:
+            if column in id_columns:
+                continue
+            if pd.api.types.is_integer_dtype(df[column]):
+                df[column] = pd.to_numeric(df[column], downcast='integer')
+            else:
+                df[column] = pd.to_numeric(df[column], downcast='float')
+
+        return df
+
+    def _normalize_lookup_key(self, value: Any) -> Any:
+        """Normalize lookup keys to match the indexed ID type."""
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return value
     
     def get_user_features(self, user_id: str) -> Dict[str, Any]:
         """
@@ -120,6 +176,7 @@ class FeatureLoader:
             return {}
         
         try:
+            user_id = self._normalize_lookup_key(user_id)
             if user_id in self.user_features.index:
                 return self.user_features.loc[user_id].to_dict()
             else:
@@ -148,6 +205,7 @@ class FeatureLoader:
             return self._get_default_item_features()
         
         try:
+            retailrocket_item_id = self._normalize_lookup_key(retailrocket_item_id)
             if retailrocket_item_id in self.item_features.index:
                 return self.item_features.loc[retailrocket_item_id].to_dict()
             else:

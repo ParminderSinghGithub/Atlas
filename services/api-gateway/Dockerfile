@@ -1,7 +1,14 @@
-FROM python:3.13-slim
+FROM python:3.11-slim
+
 WORKDIR /app
+
+# Install declared dependencies so Render gets pydantic-settings and any future runtime pins.
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
 COPY . .
-RUN pip install fastapi uvicorn httpx
+
 EXPOSE 8000
 
 # Health check

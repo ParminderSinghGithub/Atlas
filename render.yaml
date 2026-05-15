@@ -73,6 +73,8 @@ services:
         value: /artifacts
       - key: MODEL_VERSION
         value: production_v1
+      - key: RENDER_DEPLOYMENT_MODE
+        value: "true"
       - key: LOG_LEVEL
         value: INFO
       - key: ENABLE_LIGHTGBM_RANKING

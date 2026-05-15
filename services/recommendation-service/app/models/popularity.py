@@ -86,7 +86,10 @@ class PopularityModel:
                 self.popularity_scores = pd.Series(dtype=float)
                 return
             
-            item_features = pd.read_parquet(features_path)
+            try:
+                item_features = pd.read_parquet(features_path, columns=["product_id", "item_id", "total_views", "view_count", "interaction_count", "purchase_count", "popularity_score"])
+            except Exception:
+                item_features = pd.read_parquet(features_path)
             
             # Use view_count or interaction count as popularity proxy
             if 'total_views' in item_features.columns:
@@ -117,10 +120,9 @@ class PopularityModel:
             # Create popularity series
             if id_col:
                 # Convert product_id to int for consistent typing with latent_item_id
-                item_features_copy = item_features.copy()
-                item_features_copy[id_col] = item_features_copy[id_col].astype(int)
+                item_features[id_col] = pd.to_numeric(item_features[id_col], downcast='integer')
                 self.popularity_scores = (
-                    item_features_copy
+                    item_features
                     .set_index(id_col)[popularity_col]
                     .sort_values(ascending=False)
                 )
