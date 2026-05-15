@@ -8,6 +8,7 @@ Endpoints:
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List, Dict, Any
 from uuid import UUID
+import asyncio
 import time
 import numpy as np
 import httpx
@@ -45,6 +46,66 @@ def _log_endpoint_exception(endpoint: str, error: Exception, **context: Any) -> 
     logger.exception("%s failed | context=%s", endpoint, _safe_endpoint_context(**context))
 
 
+async def fetch_product_metadata_safe(
+    client: httpx.AsyncClient,
+    semaphore: asyncio.Semaphore,
+    base_url: str,
+    product_id: UUID,
+) -> tuple[UUID, Dict[str, Any], float]:
+    """Fetch a single product metadata record with bounded concurrency and graceful fallback."""
+    request_url = f"{base_url}/api/v1/catalog/products/{product_id}"
+    request_start = time.time()
+
+    async with semaphore:
+        try:
+            logger.info(
+                "Fetching metadata from: %s | base_url=%s | product_id=%s",
+                request_url,
+                base_url,
+                product_id,
+            )
+            response = await client.get(request_url)
+            request_latency_ms = (time.time() - request_start) * 1000
+
+            if response.status_code == 200:
+                product_data = response.json()
+                category = product_data.get('category', {})
+                category_slug = category.get('slug', category.get('name', '').lower().replace(' ', '-'))
+
+                return product_id, {
+                    'name': product_data.get('name', ''),
+                    'price': product_data.get('price', 0),
+                    'category_name': category.get('name', ''),
+                    'category_slug': category_slug,
+                    'image_url': product_data.get('image_url', ''),
+                    'stock_quantity': 10,  # Mock for now
+                    'is_deleted': False,
+                    'category_id': category.get('id', '')
+                }, request_latency_ms
+
+            logger.warning(
+                "Failed to fetch product metadata | product_id=%s | http_status=%s | request_url=%s",
+                product_id,
+                response.status_code,
+                request_url,
+            )
+        except Exception:
+            logger.exception(
+                "Error fetching product metadata | product_id=%s | request_url=%s",
+                product_id,
+                request_url,
+            )
+
+    request_latency_ms = (time.time() - request_start) * 1000
+    return product_id, {
+        'name': '',
+        'price': 0,
+        'stock_quantity': 10,
+        'is_deleted': False,
+        'category_id': hash(product_id) % 10
+    }, request_latency_ms
+
+
 async def fetch_product_metadata(product_ids: List[UUID]) -> Dict[UUID, Dict[str, Any]]:
     """
     Fetch product metadata from catalog service.
@@ -61,50 +122,27 @@ async def fetch_product_metadata(product_ids: List[UUID]) -> Dict[UUID, Dict[str
     try:
         base_url = get_catalog_service_url()
         logger.info("Resolved catalog metadata base URL: %s", base_url)
+        hydration_start = time.time()
 
         # Call catalog service through API gateway
         async with httpx.AsyncClient(timeout=5.0) as client:
-            # Fetch products individually (catalog doesn't have batch endpoint)
-            metadata = {}
-            for pid in product_ids:
-                try:
-                    request_url = f"{base_url}/api/v1/catalog/products/{pid}"
-                    logger.info(
-                        "Fetching metadata from: %s | base_url=%s | product_id=%s",
-                        request_url,
-                        base_url,
-                        pid,
-                    )
-                    response = await client.get(
-                        request_url
-                    )
-                    if response.status_code == 200:
-                        product_data = response.json()
-                        # Extract category slug from category object
-                        category = product_data.get('category', {})
-                        category_slug = category.get('slug', category.get('name', '').lower().replace(' ', '-'))
-                        
-                        metadata[pid] = {
-                            'name': product_data.get('name', ''),
-                            'price': product_data.get('price', 0),
-                            'category_name': category.get('name', ''),
-                            'category_slug': category_slug,
-                            'image_url': product_data.get('image_url', ''),
-                            'stock_quantity': 10,  # Mock for now
-                            'is_deleted': False,
-                            'category_id': category.get('id', '')
-                        }
-                    else:
-                        logger.warning(
-                            "Failed to fetch product metadata | product_id=%s | http_status=%s",
-                            pid,
-                            response.status_code,
-                        )
-                except Exception as e:
-                    logger.exception("Error fetching product metadata | product_id=%s", pid)
-                    continue
-            
-            logger.info(f"Fetched metadata for {len(metadata)}/{len(product_ids)} products")
+            semaphore = asyncio.Semaphore(10)
+            tasks = [fetch_product_metadata_safe(client, semaphore, base_url, pid) for pid in product_ids]
+            results = await asyncio.gather(*tasks)
+
+            metadata = {pid: payload for pid, payload, _ in results}
+            latencies = [latency for _, _, latency in results]
+            hydrated_count = sum(1 for payload in metadata.values() if payload.get('name'))
+            total_hydration_ms = (time.time() - hydration_start) * 1000
+            average_request_latency_ms = sum(latencies) / len(latencies) if latencies else 0.0
+
+            logger.info(
+                "Metadata hydration complete | hydrated=%s/%s | total_duration_ms=%.2f | avg_request_latency_ms=%.2f",
+                hydrated_count,
+                len(product_ids),
+                total_hydration_ms,
+                average_request_latency_ms,
+            )
             return metadata
             
     except Exception as e:
