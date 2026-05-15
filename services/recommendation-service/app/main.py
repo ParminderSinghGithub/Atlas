@@ -13,6 +13,7 @@ Service responsibilities:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import os
 
 from app.core.config import settings
 from app.core.logging import setup_logging, get_logger
@@ -28,6 +29,11 @@ from app.session.reranker import get_session_reranker
 # Setup logging
 setup_logging()
 logger = get_logger(__name__)
+
+
+def get_runtime_port() -> int:
+    """Resolve the listening port with Railway PORT precedence."""
+    return int(os.getenv("PORT") or os.getenv("SERVICE_PORT") or settings.service_port)
 
 
 @asynccontextmanager
@@ -209,6 +215,6 @@ if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=settings.service_port,
+        port=get_runtime_port(),
         reload=False  # Disable in production
     )
