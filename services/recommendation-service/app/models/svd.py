@@ -91,8 +91,8 @@ class SVDModel:
                 f"factors={self.user_factors.shape[1] if self.user_factors is not None else 'N/A'}"
             )
         
-        except Exception as e:
-            logger.error(f"Failed to load SVD model: {e}")
+        except Exception:
+            logger.exception(f"Failed to load SVD model from {self.model_path}")
             self.model = None
             self.user_mapping = {}
             self.item_mapping = {}
@@ -155,8 +155,8 @@ class SVDModel:
             logger.info(f"SVD generated {len(retailrocket_ids)} candidates for user {user_id} | mean_score={scores[top_k_indices].mean():.4f}")
             return retailrocket_ids
         
-        except Exception as e:
-            logger.error(f"SVD prediction failed for user {user_id}: {e}")
+        except Exception:
+            logger.exception("SVD prediction failed | user_id=%s", user_id)
             return None
     
     def is_available(self) -> bool:

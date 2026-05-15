@@ -73,8 +73,8 @@ class SimilarityModel:
                 f"total_similarities={total_similarities}"
             )
         
-        except Exception as e:
-            logger.error(f"Failed to load similarity model: {e}")
+        except Exception:
+            logger.exception(f"Failed to load similarity model from {self.model_path}")
             self.similarity_dict = None
             raise
     
@@ -132,8 +132,8 @@ class SimilarityModel:
             logger.debug(f"Found {len(similar_items)} similar items for item {item_id}")
             return similar_items
         
-        except Exception as e:
-            logger.error(f"Similarity lookup failed for item {item_id}: {e}")
+        except Exception:
+            logger.exception("Similarity lookup failed | item_id=%s", item_id)
             return None
     
     def is_available(self) -> bool:

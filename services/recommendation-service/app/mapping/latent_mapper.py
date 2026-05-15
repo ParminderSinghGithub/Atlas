@@ -55,8 +55,8 @@ class LatentMapper:
                 command_timeout=5
             )
             logger.info("Database connection pool created")
-        except Exception as e:
-            logger.error(f"Failed to connect to database: {e}")
+        except Exception:
+            logger.exception("Failed to connect to database for latent mappings")
             raise
     
     async def map_to_catalog(
@@ -91,8 +91,8 @@ class LatentMapper:
         # Convert string IDs to integers if needed
         try:
             int_ids = [int(id_) if isinstance(id_, str) else id_ for id_ in retailrocket_item_ids]
-        except (ValueError, TypeError) as e:
-            logger.error(f"Failed to convert IDs to integers: {e}")
+        except (ValueError, TypeError):
+            logger.exception("Failed to convert latent item IDs to integers")
             return []
         
         confidence_threshold = confidence_threshold or settings.confidence_threshold
@@ -111,11 +111,20 @@ class LatentMapper:
                 logger.info(f"Sample IDs: {int_ids[:5]}")
                 
                 rows = await conn.fetch(query, int_ids, confidence_threshold)
-                logger.info(f"Query returned {len(rows)} rows")
+                logger.info(
+                    "Latent mapping query completed | requested_ids=%s | rows=%s | empty=%s",
+                    len(int_ids),
+                    len(rows),
+                    not rows,
+                )
                 
                 # Extract UUIDs (preserve order from input for ranking consistency)
                 uuid_map = {row['latent_item_id']: row['product_id'] for row in rows}
-                logger.info(f"UUID map size: {len(uuid_map)}")
+                logger.info(
+                    "Latent mapping UUID map built | size=%s | has_mappings=%s",
+                    len(uuid_map),
+                    bool(uuid_map),
+                )
                 
                 if preserve_ids:
                     # Return tuples of (UUID, retailrocket_id) to preserve score mapping
@@ -139,8 +148,12 @@ class LatentMapper:
                 
                 return catalog_results
         
-        except Exception as e:
-            logger.error(f"Latent mapping query failed: {e}")
+        except Exception:
+            logger.exception(
+                "Latent mapping query failed | requested_ids=%s | threshold=%s",
+                int_ids[:10],
+                confidence_threshold,
+            )
             return []
     
     async def map_with_metadata(
@@ -177,6 +190,12 @@ class LatentMapper:
                     ORDER BY confidence_score DESC
                 """
                 rows = await conn.fetch(query, retailrocket_item_ids, confidence_threshold)
+                logger.info(
+                    "Latent mapping metadata query completed | requested_ids=%s | rows=%s | empty=%s",
+                    len(retailrocket_item_ids),
+                    len(rows),
+                    not rows,
+                )
                 
                 # Convert to list of dicts
                 mappings = [
@@ -191,8 +210,12 @@ class LatentMapper:
                 
                 return mappings
         
-        except Exception as e:
-            logger.error(f"Latent mapping with metadata failed: {e}")
+        except Exception:
+            logger.exception(
+                "Latent mapping metadata lookup failed | requested_ids=%s | threshold=%s",
+                retailrocket_item_ids[:10],
+                confidence_threshold,
+            )
             return []
     
     async def get_valid_latent_ids(self, confidence_threshold: float = None) -> List[int]:
@@ -224,10 +247,18 @@ class LatentMapper:
                 """
                 rows = await conn.fetch(query, confidence_threshold)
                 valid_ids = [row['latent_item_id'] for row in rows]
-                logger.info(f"Found {len(valid_ids)} valid latent IDs with confidence >= {confidence_threshold}")
+                logger.info(
+                    "Valid latent IDs query completed | count=%s | threshold=%s | empty=%s",
+                    len(valid_ids),
+                    confidence_threshold,
+                    not valid_ids,
+                )
                 return valid_ids
-        except Exception as e:
-            logger.error(f"Failed to fetch valid latent IDs: {e}")
+        except Exception:
+            logger.exception(
+                "Failed to fetch valid latent IDs | threshold=%s",
+                confidence_threshold,
+            )
             return []
     
     async def close(self):

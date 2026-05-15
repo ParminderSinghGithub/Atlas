@@ -10,8 +10,9 @@ Service responsibilities:
 - Apply business rules (diversity, stock filtering)
 - Handle cold start gracefully
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import os
 
@@ -207,6 +208,18 @@ app.add_middleware(
 
 # Register routes
 app.include_router(router, tags=["recommendations"])
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Log uncaught exceptions with request context and traceback."""
+    logger.exception(
+        "Unhandled exception | method=%s | path=%s | query_params=%s",
+        request.method,
+        request.url.path,
+        dict(request.query_params),
+    )
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 @app.get("/")

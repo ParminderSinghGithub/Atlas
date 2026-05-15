@@ -2,6 +2,8 @@
 Category API routes (read-only).
 Implements hierarchical navigation and product filtering.
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_
@@ -25,6 +27,19 @@ from app.api.schemas import (
 from app.core.config import settings
 
 router = APIRouter(prefix="/categories", tags=["categories"])
+logger = logging.getLogger(__name__)
+
+
+def _log_price_sample(route_name: str, product_id: UUID, stored_price, emitted_price, currency: str) -> None:
+    """Log a single concise sample of price serialization."""
+    logger.info(
+        "%s price sample | product_id=%s | stored_price=%s | emitted_price=%s | currency=%s",
+        route_name,
+        product_id,
+        stored_price,
+        emitted_price,
+        currency,
+    )
 
 
 @router.get("", response_model=CategoryListResponse)
@@ -189,32 +204,43 @@ def list_category_products(
     # Determine next cursor
     next_cursor = products[-1].id if products and has_more else None
     
-    # Build response with USD to INR conversion
+    response_products = [
+        ProductResponse(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            price=round(float(p.price), 2),
+            currency="INR",
+            stock_quantity=p.stock_quantity,
+            image_url=p.image_url,
+            thumbnail_url=p.thumbnail_url,
+            attributes=p.attributes,
+            category=CategorySummary(
+                id=p.category.id,
+                name=p.category.name,
+                path=p.category.path
+            ),
+            seller=SellerSummary(
+                id=p.seller.id,
+                name=p.seller.name,
+                rating=p.seller.rating
+            ) if p.seller else None
+        )
+        for p in products
+    ]
+
+    if products:
+        sample = products[0]
+        _log_price_sample(
+            "list_category_products",
+            sample.id,
+            float(sample.price),
+            round(float(sample.price), 2),
+            "INR",
+        )
+
     return ProductListResponse(
-        products=[
-            ProductResponse(
-                id=p.id,
-                name=p.name,
-                description=p.description,
-                price=round(float(p.price) * settings.USD_TO_INR_RATE, 2),
-                currency="INR",
-                stock_quantity=p.stock_quantity,
-                image_url=p.image_url,
-                thumbnail_url=p.thumbnail_url,
-                attributes=p.attributes,
-                category=CategorySummary(
-                    id=p.category.id,
-                    name=p.category.name,
-                    path=p.category.path
-                ),
-                seller=SellerSummary(
-                    id=p.seller.id,
-                    name=p.seller.name,
-                    rating=p.seller.rating
-                ) if p.seller else None
-            )
-            for p in products
-        ],
+        products=response_products,
         pagination=PaginationMeta(
             next_cursor=next_cursor,
             has_more=has_more,

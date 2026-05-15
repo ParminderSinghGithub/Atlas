@@ -35,6 +35,16 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+def _safe_endpoint_context(**kwargs: Any) -> Dict[str, Any]:
+    """Build a compact log context without empty values."""
+    return {key: value for key, value in kwargs.items() if value is not None}
+
+
+def _log_endpoint_exception(endpoint: str, error: Exception, **context: Any) -> None:
+    """Log a full traceback for an endpoint failure."""
+    logger.exception("%s failed | context=%s", endpoint, _safe_endpoint_context(**context))
+
+
 async def fetch_product_metadata(product_ids: List[UUID]) -> Dict[UUID, Dict[str, Any]]:
     """
     Fetch product metadata from catalog service.
@@ -75,16 +85,20 @@ async def fetch_product_metadata(product_ids: List[UUID]) -> Dict[UUID, Dict[str
                             'category_id': category.get('id', '')
                         }
                     else:
-                        logger.warning(f"Failed to fetch product {pid}: HTTP {response.status_code}")
+                        logger.warning(
+                            "Failed to fetch product metadata | product_id=%s | http_status=%s",
+                            pid,
+                            response.status_code,
+                        )
                 except Exception as e:
-                    logger.warning(f"Error fetching product {pid}: {e}")
+                    logger.exception("Error fetching product metadata | product_id=%s", pid)
                     continue
             
             logger.info(f"Fetched metadata for {len(metadata)}/{len(product_ids)} products")
             return metadata
             
     except Exception as e:
-        logger.error(f"Failed to fetch product metadata: {e}")
+        logger.exception("Failed to fetch product metadata batch")
         # Fallback to mock data
         return {
             pid: {
@@ -122,7 +136,13 @@ async def get_recommendations(
     - Metadata (optional)
     """
     start_time = time.time()
-    logger.info(f"Recommendation request: user_id={user_id}, product_id={product_id}, k={k}")
+    logger.info(
+        "Recommendation request: user_id=%s, product_id=%s, k=%s, include_metadata=%s",
+        user_id,
+        product_id,
+        k,
+        include_metadata,
+    )
     
     # Validation: At least one of user_id or product_id required
     if user_id is None and product_id is None:
@@ -146,7 +166,12 @@ async def get_recommendations(
             logger.info(f"Candidate generation (direct UUIDs): strategy={strategy_used}, count={len(catalog_uuids) if catalog_uuids else 0}")
             
             if not catalog_uuids:
-                logger.warning("No candidates generated, returning empty recommendations")
+                logger.warning(
+                    "No candidates generated, returning empty recommendations | strategy=%s | user_id=%s | product_id=%s | empty_candidates=True",
+                    strategy_used,
+                    user_id,
+                    product_id,
+                )
                 return RecommendationResponse(
                     recommendations=[],
                     strategy_used=strategy_used,
@@ -222,7 +247,12 @@ async def get_recommendations(
         logger.info(f"Candidate generation complete: strategy={strategy_used}, count={len(retailrocket_ids) if retailrocket_ids else 0}")
         
         if not retailrocket_ids:
-            logger.warning("No candidates generated, returning empty recommendations")
+            logger.warning(
+                "No candidates generated, returning empty recommendations | strategy=%s | user_id=%s | product_id=%s | empty_candidates=True",
+                strategy_used,
+                user_id,
+                product_id,
+            )
             return RecommendationResponse(
                 recommendations=[],
                 strategy_used=strategy_used,
@@ -260,7 +290,7 @@ async def get_recommendations(
                     ranker.load()
                     logger.info("LightGBM model loaded successfully")
                 except Exception as e:
-                    logger.warning(f"Failed to load LightGBM model: {e}")
+                    logger.exception("Failed to load LightGBM model")
                     settings.enable_lightgbm_ranking = False
 
             logger.info(f"LightGBM status: is_available={ranker.is_available()}, enabled={settings.enable_lightgbm_ranking}")
@@ -296,7 +326,12 @@ async def get_recommendations(
                         strategy_used = "popularity_fallback"
                         
                 except Exception as e:
-                    logger.error(f"LightGBM ranking failed, using original candidate scores: {e}")
+                    logger.exception(
+                        "LightGBM ranking failed, using original candidate scores | user_id=%s | product_id=%s | candidate_count=%s",
+                        user_id,
+                        product_id,
+                        len(retailrocket_ids),
+                    )
                     log_fallback(logger, "lightgbm_failure", "candidate_order")
                     # Fallback: use original scores from candidate generation
                     ranked_items_with_scores = retailrocket_ids_with_scores
@@ -324,7 +359,11 @@ async def get_recommendations(
         logger.info(f"Mapper returned {len(catalog_mapping)} catalog mappings")
         
         if not catalog_mapping:
-            logger.warning("No catalog mappings found, returning empty recommendations")
+            logger.warning(
+                "No catalog mappings found, returning empty recommendations | candidate_count=%s | threshold=%s | mappings_found=False",
+                len(retailrocket_ids),
+                settings.confidence_threshold,
+            )
             return RecommendationResponse(
                 recommendations=[],
                 strategy_used=strategy_used,
@@ -370,8 +409,12 @@ async def get_recommendations(
                     )
                     final_products_with_scores = list(zip(reranked_candidates, reranked_scores))
                     logger.info(f"Session re-ranking applied: {session_meta}")
-            except Exception as e:
-                logger.warning(f"Session re-ranking failed, using original ranking: {e}")
+            except Exception:
+                logger.exception(
+                    "Session re-ranking failed, using original ranking | user_id=%s | candidate_count=%s",
+                    user_id,
+                    len(final_products_with_scores),
+                )
         
         # Build response with real LightGBM scores and product metadata
         recommendations = [
@@ -416,8 +459,17 @@ async def get_recommendations(
             total_returned=len(recommendations)
         )
     
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Recommendation pipeline failed: {e}", exc_info=True)
+        _log_endpoint_exception(
+            "recommendations",
+            e,
+            user_id=user_id,
+            product_id=str(product_id) if product_id else None,
+            k=k,
+            include_metadata=include_metadata,
+        )
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -487,7 +539,7 @@ async def generate_candidates(
                                 # We'll bypass the latent mapping since we already have UUIDs
                                 return ("category_similarity", similar_uuids, True)  # True = already UUIDs
         except Exception as e:
-            logger.warning(f"Failed to fetch category for product {product_id}: {e}")
+            logger.exception("Failed to fetch category for product-based recommendation | product_id=%s", product_id)
         
         # Original similarity model attempt
         try:
@@ -499,7 +551,11 @@ async def generate_candidates(
                     try:
                         similarity_model.load()
                     except Exception as e:
-                        logger.warning(f"Failed to load similarity model: {e}")
+                        logger.exception(
+                            "Failed to load similarity model | product_id=%s | retailrocket_id=%s",
+                            product_id,
+                            retailrocket_id,
+                        )
                         log_fallback(logger, "similarity_load_failed", "popularity")
                         popularity_model = get_popularity_model()
                         if not popularity_model.is_available():
@@ -515,8 +571,12 @@ async def generate_candidates(
                 else:
                     logger.info(f"Item {retailrocket_id} not in similarity matrix, falling back to popularity")
                     log_fallback(logger, "item_not_in_similarity", "popularity")
-        except Exception as e:
-            logger.warning(f"Similarity lookup failed: {e}")
+        except Exception:
+            logger.exception(
+                "Similarity lookup failed | product_id=%s | retailrocket_id=%s",
+                product_id,
+                retailrocket_id if 'retailrocket_id' in locals() else None,
+            )
             log_fallback(logger, "similarity_error", "popularity")
         
         # Fallback to popularity for product-based queries
@@ -536,7 +596,7 @@ async def generate_candidates(
                 svd_model.load()
                 logger.info("SVD model loaded successfully")
             except Exception as e:
-                logger.warning(f"Failed to load SVD model: {e}")
+                logger.exception("Failed to load SVD model | user_id=%s", user_id)
                 log_fallback(logger, "svd_load_failed", "popularity")
                 popularity_model = get_popularity_model()
                 if not popularity_model.is_available():
@@ -604,8 +664,8 @@ async def health_check():
             database_connected=db_connected
         )
     
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
+    except Exception:
+        logger.exception("Health check failed")
         return HealthResponse(
             status="unhealthy",
             models_loaded={},
@@ -626,8 +686,20 @@ async def track_session_event(request: SessionTrackRequest):
     """
     try:
         reranker = await get_session_reranker(settings.redis_url if settings.redis_enabled else None)
+        logger.info(
+            "Session tracking request received | user_id=%s | event_type=%s | category_slug=%s | product_id=%s",
+            request.user_id,
+            request.event_type,
+            request.category_slug,
+            request.product_id,
+        )
         
         if not reranker.enabled:
+            logger.warning(
+                "Session tracking disabled | user_id=%s | event_type=%s",
+                request.user_id,
+                request.event_type,
+            )
             return SessionTrackResponse(
                 success=False,
                 message="Session tracking disabled (Redis not available)"
@@ -638,6 +710,11 @@ async def track_session_event(request: SessionTrackRequest):
                 raise HTTPException(status_code=400, detail="category_slug required for category_view")
             
             await reranker.track_category_view(request.user_id, request.category_slug)
+            logger.info(
+                "Session category view tracked | user_id=%s | category_slug=%s",
+                request.user_id,
+                request.category_slug,
+            )
             return SessionTrackResponse(
                 success=True,
                 message=f"Tracked category view: {request.category_slug}"
@@ -648,6 +725,11 @@ async def track_session_event(request: SessionTrackRequest):
                 raise HTTPException(status_code=400, detail="product_id required for product_view")
             
             await reranker.track_product_view(request.user_id, request.product_id)
+            logger.info(
+                "Session product view tracked | user_id=%s | product_id=%s",
+                request.user_id,
+                request.product_id,
+            )
             return SessionTrackResponse(
                 success=True,
                 message=f"Tracked product view: {request.product_id}"
@@ -662,7 +744,13 @@ async def track_session_event(request: SessionTrackRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Session tracking failed: {e}")
+        logger.exception(
+            "Session tracking failed | user_id=%s | event_type=%s | category_slug=%s | product_id=%s",
+            request.user_id,
+            request.event_type,
+            request.category_slug,
+            request.product_id,
+        )
         return SessionTrackResponse(
             success=False,
             message=f"Tracking failed: {str(e)}"

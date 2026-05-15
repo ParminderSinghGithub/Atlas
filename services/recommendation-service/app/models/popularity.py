@@ -60,13 +60,16 @@ class PopularityModel:
             self.popularity_scores = self.popularity_scores.sort_values(ascending=False)
             
             logger.info(f"Popularity baseline loaded | items={len(self.popularity_scores)}")
+            if len(self.popularity_scores) > 0:
+                sample_items = list(self.popularity_scores.head(3).items())
+                logger.info(f"Popularity sample (top 3) | items={[(int(i), float(s)) for i, s in sample_items]}")
         
         except FileNotFoundError:
             logger.warning(f"Popularity baseline not found at {self.model_path}, generating from item_features")
             self._generate_from_item_features()
         
-        except Exception as e:
-            logger.error(f"Failed to load popularity baseline: {e}")
+        except Exception:
+            logger.exception(f"Failed to load popularity baseline from {self.model_path}")
             raise
     
     def _generate_from_item_features(self):
@@ -127,6 +130,9 @@ class PopularityModel:
                     .sort_values(ascending=False)
                 )
                 logger.info(f"Using {id_col} as index (converted to int) | min={self.popularity_scores.index.min()} | max={self.popularity_scores.index.max()}")
+                if len(self.popularity_scores) > 0:
+                    sample_items = list(self.popularity_scores.head(3).items())
+                    logger.info(f"Generated popularity sample (top 3) | items={[(int(i), float(s)) for i, s in sample_items]}")
             else:
                 self.popularity_scores = (
                     item_features[popularity_col]
@@ -173,10 +179,12 @@ class PopularityModel:
         if valid_ids is not None:
             valid_set = set(valid_ids)
             scores_to_use = self.popularity_scores[self.popularity_scores.index.isin(valid_set)]
-            logger.info(f"Filtered popularity to {len(scores_to_use)}/{len(self.popularity_scores)} valid mapped items")
+            logger.info(
+                f"Filtered popularity to {len(scores_to_use)}/{len(self.popularity_scores)} valid mapped items | valid_ids_empty={not bool(valid_ids)}"
+            )
             
             if len(scores_to_use) == 0:
-                logger.warning("No valid mapped items in popularity baseline")
+                logger.warning("No valid mapped items in popularity baseline | candidate_list_empty=True")
                 return []
         
         # Return top-K item IDs (with optional scores)

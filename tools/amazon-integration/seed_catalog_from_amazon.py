@@ -74,6 +74,7 @@ class CatalogSeeder:
         self.database_url = database_url
         self.engine = None
         self.session_factory = None
+        self._price_samples_logged = 0
     
     async def connect(self):
         """Create async database connection."""
@@ -286,6 +287,16 @@ class CatalogSeeder:
                 category_id=category_id,
                 seller_id=seller_id
             )
+
+            if self._price_samples_logged < 3:
+                print(
+                    "  Seed price sample | "
+                    f"parent_asin={parent_asin} | "
+                    f"stored_price={prod_data['price']} | "
+                    f"currency=INR | "
+                    f"category={category_slug}"
+                )
+                self._price_samples_logged += 1
             
             session.add(product)
             created_count += 1

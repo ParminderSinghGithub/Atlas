@@ -104,7 +104,7 @@ class SessionReranker:
             redis_client = await redis.from_url(
                 redis_url,
                 encoding="utf-8",
-                decode_responses=True,
+                logger.exception("Failed to connect to Redis for session tracking")
                 socket_connect_timeout=2
             )
             
@@ -155,7 +155,11 @@ class SessionReranker:
             logger.debug(f"Tracked category view: user={user_id}, category={category_slug}")
         
         except Exception as e:
-            logger.warning(f"Failed to track category view: {e}")
+                logger.exception(
+                    "Failed to track category view | user_id=%s | category_slug=%s",
+                    user_id,
+                    category_slug,
+                )
     
     async def track_product_view(self, user_id: str, product_id: UUID):
         """
@@ -190,7 +194,11 @@ class SessionReranker:
             logger.debug(f"Tracked product view: user={user_id}, product={product_id}")
         
         except Exception as e:
-            logger.warning(f"Failed to track product view: {e}")
+                logger.exception(
+                    "Failed to track product view | user_id=%s | product_id=%s",
+                    user_id,
+                    product_id,
+                )
     
     async def _get_signals(self, user_id: str) -> Optional[SessionSignals]:
         """Load session signals from Redis."""
@@ -219,7 +227,7 @@ class SessionReranker:
             return signals
         
         except Exception as e:
-            logger.warning(f"Failed to load session signals: {e}")
+                logger.exception("Failed to load session signals | user_id=%s", user_id)
             return None
     
     async def _save_signals(self, user_id: str, signals: SessionSignals):
@@ -240,7 +248,7 @@ class SessionReranker:
                 self.SESSION_TTL,
                 json.dumps(data)
             )
-        
+                    logger.exception("Failed to save session signals | user_id=%s", user_id)
         except Exception as e:
             logger.warning(f"Failed to save session signals: {e}")
     

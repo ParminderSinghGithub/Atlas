@@ -80,6 +80,20 @@ class AmazonIngester:
         self.products: List[AmazonProduct] = []
         self.seen_asins: Set[str] = set()
         self.category_counts: Dict[str, int] = {cat: 0 for cat in self.CATEGORY_CAPS}
+        self._price_samples_logged: int = 0
+
+    def _detect_price_currency(self, item: Dict) -> str:
+        """Best-effort currency guess for diagnostic logging."""
+        for key in ("price", "list_price"):
+            raw_value = item.get(key)
+            if raw_value is None:
+                continue
+            raw_text = str(raw_value)
+            if "$" in raw_text or "usd" in raw_text.lower():
+                return "USD"
+            if "inr" in raw_text.lower() or "₹" in raw_text:
+                return "INR"
+        return "unknown"
     
     def _extract_price(self, item: Dict) -> Optional[float]:
         """
@@ -321,6 +335,17 @@ class AmazonIngester:
                 category_path, main_category = self._extract_categories(item)
                 description = self._normalize_description(item)
                 features = self._extract_features(item)
+
+                if self._price_samples_logged < 3:
+                    print(
+                        "    Price sample | "
+                        f"parent_asin={parent_asin} | "
+                        f"raw_price={item.get('price') or item.get('details', {}).get('Price')} | "
+                        f"detected_currency={self._detect_price_currency(item)} | "
+                        f"normalized_usd={price_usd:.2f} | "
+                        f"stored_inr={price_inr:.2f}"
+                    )
+                    self._price_samples_logged += 1
                 
                 # Create normalized product
                 product = AmazonProduct(
