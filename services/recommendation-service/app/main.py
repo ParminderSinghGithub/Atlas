@@ -67,7 +67,10 @@ async def lifespan(app: FastAPI):
         svd = get_svd_model()
         try:
             svd.load()
-            logger.info(f"  PASS SVD | users={len(svd.user_mapping)} | items={len(svd.item_mapping)}")
+            if svd.is_available():
+                logger.info(f"  PASS SVD | users={len(svd.user_mapping)} | items={len(svd.item_mapping)}")
+            else:
+                logger.warning("  SKIP SVD | SVD model not found — continuing without SVD recommender.")
         except Exception as e:
             logger.error(f"  FAIL SVD: {e}")
             if settings.enable_svd:

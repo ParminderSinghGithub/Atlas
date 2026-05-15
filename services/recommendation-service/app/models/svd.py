@@ -38,9 +38,9 @@ class SVDModel:
     def __init__(self):
         self.model = None
         self.model_path = get_model_path("svd_model.pkl")
-        self.user_mapping: Optional[dict] = None  # user_id → index
-        self.item_mapping: Optional[dict] = None  # item_id → index
-        self.index_to_item: Optional[dict] = None  # index → item_id (reverse mapping)
+        self.user_mapping: dict = {}  # user_id → index
+        self.item_mapping: dict = {}  # item_id → index
+        self.index_to_item: dict = {}  # index → item_id (reverse mapping)
         self.user_factors: Optional[np.ndarray] = None  # (n_users, n_factors)
         self.item_factors: Optional[np.ndarray] = None  # (n_items, n_factors)
     
@@ -56,6 +56,16 @@ class SVDModel:
         """
         if self.model is not None:
             return  # Already loaded
+
+        if not self.model_path.exists():
+            logger.warning("SVD model not found — continuing without SVD recommender.")
+            self.model = None
+            self.user_mapping = {}
+            self.item_mapping = {}
+            self.index_to_item = {}
+            self.user_factors = None
+            self.item_factors = None
+            return
         
         try:
             logger.info(f"Loading SVD model from {self.model_path}")
@@ -84,7 +94,11 @@ class SVDModel:
         except Exception as e:
             logger.error(f"Failed to load SVD model: {e}")
             self.model = None
-            raise
+            self.user_mapping = {}
+            self.item_mapping = {}
+            self.index_to_item = {}
+            self.user_factors = None
+            self.item_factors = None
     
     def get_candidates(self, user_id: str, k: int = 100) -> Optional[List[int]]:
         """
@@ -104,12 +118,11 @@ class SVDModel:
         """
         if self.model is None:
             self.load()
-        
-        # Check if user exists in training data
-        if user_id not in self.user_mapping:
-            logger.debug(f"User {user_id} not in SVD model (cold start)")
+
+        if not self.is_available():
             return None
         
+        # Check if user exists in training data
         try:
             # Convert user_id to string (mappings use string keys)
             user_id_str = str(user_id)

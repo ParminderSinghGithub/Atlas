@@ -71,10 +71,25 @@ logs/
 *.seed
 
 # -------------------------
-# Jupyter Artifacts
+# Runtime ML Artifacts
 # -------------------------
-notebooks/artifacts/*
-!notebooks/artifacts/.gitkeep
+
+# Ignore everything by default
+notebooks/artifacts/**
+
+# Keep required runtime model artifacts
+!notebooks/artifacts/models/
+!notebooks/artifacts/models/production_v1/
+!notebooks/artifacts/models/production_v1/lightgbm_ranker.txt
+!notebooks/artifacts/models/production_v1/svd_model.pkl
+!notebooks/artifacts/models/production_v1/item_similarity.pkl
+!notebooks/artifacts/models/production_v1/popularity_baseline.pkl
+
+# Keep required runtime feature tables
+!notebooks/artifacts/features/
+!notebooks/artifacts/features/retailrocket/
+!notebooks/artifacts/features/retailrocket/user_features.parquet
+!notebooks/artifacts/features/retailrocket/item_features.parquet
 
 # -------------------------
 # Frontend (Vite/React)
@@ -91,12 +106,6 @@ frontend/.cache/
 mlruns/
 mlflow/
 model_registry/
-notebooks/artifacts/models/*.pkl
-notebooks/artifacts/models/*.h5
-notebooks/artifacts/models/*.onnx
-notebooks/artifacts/models/*.joblib
-notebooks/artifacts/models/*.pth
-notebooks/artifacts/models/*.pt
 
 # Training pipeline artifacts (intermediate files only, not scripts)
 training/artifacts/
@@ -118,6 +127,7 @@ data/
 tools/seed-data/*.json
 !tools/seed-data/.gitkeep
 notebooks/artifacts/external/**/*.csv
+notebooks/artifacts/models/production_v1/svd_model.pkl
 
 # -------------------------
 # Test/Temporary Virtual Environments
