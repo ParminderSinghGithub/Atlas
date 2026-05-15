@@ -743,3 +743,199 @@ az aks check-acr --resource-group atlas-rg --name atlas-aks --acr atlasacrp1
 ---
 
 **Next Steps**: Test application at https://4-224-153-183.sslip.io/, then iterate based on user feedback and performance metrics.
+
+---
+
+## Render, Vercel, Neon, and Upstash Deployment Blueprint
+
+### Render Blueprint Scope
+
+The repository now includes [render.yaml](render.yaml), which defines four Docker-based Render services on the free tier. PostgreSQL is provided by Neon, and Redis is provided by Upstash.
+
+| Service | Root directory | Dockerfile | Health check | Notes |
+|---|---|---|---|---|
+| api-gateway | `services/api-gateway` | `services/api-gateway/Dockerfile` | `/health` | Public web service |
+| user-service | `services/user-service` | `services/user-service/Dockerfile` | `/api/auth/ping` | Public web service |
+| catalog-service | `services/catalog-service` | `services/catalog-service/Dockerfile` | `/api/v1/catalog/health` | Public web service |
+| recommendation-service | `.` | `services/recommendation-service/Dockerfile` | `/health` | Repo root build context so ML artifacts can be copied in |
+
+### Service Environment Variables
+
+#### api-gateway
+
+Required:
+- `USER_SERVICE_URL`
+- `CATALOG_SERVICE_URL`
+- `RECOMMENDATION_SERVICE_URL`
+
+Optional:
+- None used by the current code
+
+Example production values:
+- `https://user-service.onrender.com`
+- `https://catalog-service.onrender.com`
+- `https://recommendation-service.onrender.com`
+
+Dependencies:
+- User service
+- Catalog service
+- Recommendation service
+
+#### user-service
+
+Required:
+- `POSTGRES_URI`
+- `JWT_SECRET`
+
+Optional:
+- `SERVICE_NAME`
+- `SERVICE_PORT`
+- `JWT_ALGORITHM`
+- `JWT_EXPIRATION_HOURS`
+- `BCRYPT_ROUNDS`
+
+Example production values:
+- `POSTGRES_URI` copied from Neon
+- `JWT_SECRET` set manually in Render
+
+Dependencies:
+- Neon PostgreSQL
+
+#### catalog-service
+
+Required:
+- `DATABASE_URL`
+
+Optional:
+- `SERVICE_NAME`
+- `SERVICE_PORT`
+- `LOG_LEVEL`
+- `API_V1_PREFIX`
+- `DEFAULT_PAGE_SIZE`
+- `MAX_PAGE_SIZE`
+- `USD_TO_INR_RATE`
+
+Example production values:
+- `DATABASE_URL` copied from Neon
+
+Dependencies:
+- Neon PostgreSQL
+- Seed data for `categories`, `products`, `sellers`, and `latent_item_mappings`
+
+#### recommendation-service
+
+Required:
+- `DATABASE_URL`
+- `CATALOG_SERVICE_URL`
+- `REDIS_URL` if `REDIS_ENABLED=true`
+
+Optional:
+- `SERVICE_NAME`
+- `SERVICE_PORT`
+- `LOG_LEVEL`
+- `REDIS_ENABLED`
+- `REDIS_TTL_SECONDS`
+- `ARTIFACTS_PATH`
+- `MODEL_VERSION`
+- `CANDIDATE_POOL_SIZE`
+- `MAX_RECOMMENDATIONS`
+- `DEFAULT_RECOMMENDATIONS`
+- `CONFIDENCE_THRESHOLD`
+- `MAX_ITEMS_PER_CATEGORY`
+- `POPULARITY_FALLBACK_SIZE`
+- `ENABLE_SVD`
+- `ENABLE_ITEM_SIMILARITY`
+- `ENABLE_LIGHTGBM_RANKING`
+
+Example production values:
+- `DATABASE_URL` copied from Neon
+- `CATALOG_SERVICE_URL=https://catalog-service.onrender.com`
+- `REDIS_URL=rediss://...` from Upstash
+- `MODEL_VERSION=production_v1`
+
+Dependencies:
+- Neon PostgreSQL
+- Catalog service
+- Upstash Redis when session tracking is enabled
+
+### Health Check Verification
+
+Correct endpoints:
+- api-gateway: `/health`
+- user-service: `/api/auth/ping`
+- catalog-service: `/api/v1/catalog/health`
+- recommendation-service: `/health`
+
+Expected startup behavior:
+- api-gateway starts immediately and proxies downstream traffic on demand
+- user-service initializes SQLAlchemy tables on startup via `create_all()`
+- catalog-service verifies PostgreSQL connectivity during lifespan startup
+- recommendation-service loads ML models and feature tables during lifespan startup, then defers database connection until first request
+
+### Deployment Order
+
+1. Create Neon PostgreSQL
+2. Create Upstash Redis
+3. Deploy user-service
+4. Deploy catalog-service
+5. Run manual migrations
+6. Seed database
+7. Deploy recommendation-service
+8. Deploy api-gateway
+9. Deploy frontend on Vercel
+
+### Required Manual Dashboard Steps
+
+Neon:
+- Create a Neon project and PostgreSQL database
+- Copy the Neon connection string into `POSTGRES_URI` for user-service
+- Copy the same Neon connection string into `DATABASE_URL` for catalog-service and recommendation-service
+
+Render:
+- Create the Render Blueprint from `render.yaml`
+- Enter `USER_SERVICE_URL`, `CATALOG_SERVICE_URL`, and `RECOMMENDATION_SERVICE_URL` values for the gateway
+- Enter `CATALOG_SERVICE_URL` for recommendation-service
+- Enter `REDIS_URL` for recommendation-service
+- Set `JWT_SECRET` manually in Render
+- Run manual migrations after deployment
+- Seed catalog data after the database is live
+
+Vercel:
+- Set `VITE_API_URL` to the Render gateway base URL, including `/api`
+- Use `frontend` as the project root
+- Build command: `npm run build`
+- Output directory: `dist`
+
+Upstash:
+- Create a Redis database
+- Copy the secure `rediss://` connection string into `REDIS_URL`
+
+### Manual Migration Commands
+
+Run these after the corresponding services are up and the Neon connection string is configured:
+
+```bash
+cd services/user-service
+alembic upgrade head
+
+cd ../catalog-service
+alembic upgrade head
+```
+
+If you run them from Render shell, use the same commands inside each service directory after the service is deployed.
+
+### Render Free-Tier Limitations
+
+- Free instances are not suitable for the recommendation service's startup cost and memory footprint.
+- Private services are not available on the free plan, so the backend services must be reachable by public Render URLs.
+- The recommendation service loads ML artifacts at startup, so cold starts and memory ceilings are the main operational risk.
+- Free-tier services can sleep when idle, which increases first-request latency.
+- The recommendation service may need extra startup time because it loads models, Parquet features, and a database connection pool initialization path.
+- Neon and Upstash are external managed services, so network latency becomes part of end-to-end request time.
+
+### Notes on Unused Deployment Artifacts
+
+- `frontend/Dockerfile` and `frontend/nginx.conf` remain useful for Docker-based local workflows, but Vercel does not use them.
+- The frontend Vite dev proxy still targets the Docker Compose gateway hostname for local development.
+- Docker support is preserved throughout the repository.
+- This deployment blueprint does not simplify the architecture; it only swaps infrastructure providers and delivery settings.

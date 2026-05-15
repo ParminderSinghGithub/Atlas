@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     
     # Database (for latent_item_mappings lookup)
     database_url: str = "postgresql://postgres:postgres@db:5432/ecommerce"
+
+    # Service discovery
+    catalog_service_url: str = "http://catalog-service:5004"
     
     # Redis (optional cache)
     redis_enabled: bool = False

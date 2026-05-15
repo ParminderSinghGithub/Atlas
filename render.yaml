@@ -1,0 +1,83 @@
+services:
+  - type: web
+    name: api-gateway
+    runtime: docker
+    plan: free
+    rootDir: services/api-gateway
+    dockerfilePath: Dockerfile
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: USER_SERVICE_URL
+        sync: false
+      - key: CATALOG_SERVICE_URL
+        sync: false
+      - key: RECOMMENDATION_SERVICE_URL
+        sync: false
+
+  - type: web
+    name: user-service
+    runtime: docker
+    plan: free
+    rootDir: services/user-service
+    dockerfilePath: Dockerfile
+    healthCheckPath: /api/auth/ping
+    autoDeployTrigger: commit
+    envVars:
+      - key: POSTGRES_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SERVICE_NAME
+        value: user-service
+      - key: SERVICE_PORT
+        value: "5000"
+
+  - type: web
+    name: catalog-service
+    runtime: docker
+    plan: free
+    rootDir: services/catalog-service
+    dockerfilePath: Dockerfile
+    healthCheckPath: /api/v1/catalog/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SERVICE_NAME
+        value: catalog-service
+      - key: SERVICE_PORT
+        value: "5004"
+      - key: LOG_LEVEL
+        value: INFO
+
+  - type: web
+    name: recommendation-service
+    runtime: docker
+    plan: free
+    rootDir: .
+    dockerContext: .
+    dockerfilePath: services/recommendation-service/Dockerfile
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CATALOG_SERVICE_URL
+        sync: false
+      - key: REDIS_ENABLED
+        value: "true"
+      - key: REDIS_URL
+        sync: false
+      - key: ARTIFACTS_PATH
+        value: /artifacts
+      - key: MODEL_VERSION
+        value: production_v1
+      - key: LOG_LEVEL
+        value: INFO
+      - key: ENABLE_LIGHTGBM_RANKING
+        value: "true"
+      - key: SERVICE_NAME
+        value: recommendation-service
+      - key: SERVICE_PORT
+        value: "5005"

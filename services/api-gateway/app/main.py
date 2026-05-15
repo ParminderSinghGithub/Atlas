@@ -3,6 +3,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
+from app.core import settings
+
 app = FastAPI()
 
 # Add CORS middleware to allow frontend requests
@@ -13,10 +15,6 @@ app.add_middleware(
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
 )
-
-USER_SERVICE_URL = "http://user-service:5000"
-CATALOG_SERVICE_URL = "http://catalog-service:5004"
-RECOMMENDATION_SERVICE_URL = "http://recommendation-service:5005"
 
 @app.get("/ping")
 async def root():
@@ -32,7 +30,7 @@ async def health():
 async def proxy_auth(path: str, request: Request):
     """Proxy all /api/auth/* requests to user-service"""
     async with httpx.AsyncClient() as client:
-        url = f"{USER_SERVICE_URL}/api/auth/{path}"
+        url = f"{settings.USER_SERVICE_URL}/api/auth/{path}"
         headers = dict(request.headers)
         headers.pop("host", None)
         
@@ -57,7 +55,7 @@ async def proxy_auth(path: str, request: Request):
 async def proxy_catalog(path: str, request: Request):
     """Proxy all /api/v1/catalog/* requests to catalog-service (read-only)"""
     async with httpx.AsyncClient() as client:
-        url = f"{CATALOG_SERVICE_URL}/api/v1/catalog/{path}"
+        url = f"{settings.CATALOG_SERVICE_URL}/api/v1/catalog/{path}"
         headers = dict(request.headers)
         headers.pop("host", None)
         
@@ -81,7 +79,7 @@ async def proxy_catalog(path: str, request: Request):
 async def proxy_recommendations(request: Request):
     """Proxy /api/v1/recommendations to recommendation-service"""
     async with httpx.AsyncClient(timeout=10.0) as client:
-        url = f"{RECOMMENDATION_SERVICE_URL}/api/v1/recommendations"
+        url = f"{settings.RECOMMENDATION_SERVICE_URL}/api/v1/recommendations"
         headers = dict(request.headers)
         headers.pop("host", None)
         
@@ -104,7 +102,7 @@ async def proxy_recommendations(request: Request):
 async def proxy_session_track(request: Request):
     """Proxy session tracking to recommendation-service"""
     async with httpx.AsyncClient() as client:
-        url = f"{RECOMMENDATION_SERVICE_URL}/api/v1/session/track"
+        url = f"{settings.RECOMMENDATION_SERVICE_URL}/api/v1/session/track"
         headers = dict(request.headers)
         headers.pop("host", None)
         
