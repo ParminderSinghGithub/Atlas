@@ -232,76 +232,80 @@ async def get_recommendations(
         
         logger.debug(f"Generated {len(retailrocket_ids)} candidates using {strategy_used}")
         
-        # Step 2: Feature Assembly
-        logger.info(f"Starting feature assembly for {len(retailrocket_ids)} items")
-        feature_loader = get_feature_loader()
-        features_df = feature_loader.assemble_features(
-            user_id=user_id,
-            retailrocket_item_ids=retailrocket_ids
-        )
-        logger.info(f"Feature assembly complete: shape={features_df.shape if features_df is not None else 'None'}")
-        
-        # Step 3: STAGE 2 - RANKING WITH LIGHTGBM (Precision Layer)
-        # Why two-stage pipeline:
-        # - Stage 1 (Recall): Fast generation of ~100 candidates
-        # - Stage 2 (Precision): Expensive ML ranking of candidates
-        # - Separates concerns: recall vs precision
-        logger.info("Starting LightGBM ranking (Stage 2 - Precision Layer)")
-        
-        ranker = get_ranker()
-        if not ranker.is_available() and settings.enable_lightgbm_ranking:
-            try:
-                ranker.load()
-                logger.info("LightGBM model loaded successfully")
-            except Exception as e:
-                logger.warning(f"Failed to load LightGBM model: {e}")
-                settings.enable_lightgbm_ranking = False
-        
-        # Apply LightGBM ranking
-        ranked_items_with_scores = []
-        logger.info(f"LightGBM status: is_available={ranker.is_available()}, enabled={settings.enable_lightgbm_ranking}")
-        if ranker.is_available() and settings.enable_lightgbm_ranking:
-            try:
-                scores = ranker.predict(features_df)
-                logger.info(f"Raw scores shape: {scores.shape} | dtype: {scores.dtype}")
-                logger.info(f"Score statistics: mean={scores.mean():.4f} | std={scores.std():.4f} | min={scores.min():.4f} | max={scores.max():.4f}")
-                logger.info(f"Unique score count: {len(np.unique(scores))} out of {len(scores)}")
-                logger.info(f"First 5 raw scores: {scores[:5].tolist()}")
-                logger.info(f"Last 5 raw scores: {scores[-5:].tolist()}")
-                
-                # Sort by score descending - sort both IDs and scores together
-                sorted_indices = scores.argsort()[::-1]
-                sorted_scores = scores[sorted_indices]  # Apply sorting to scores too!
-                logger.info(f"Top 5 sorted scores: {sorted_scores[:5].tolist()}")
-                logger.info(f"Bottom 5 sorted scores: {sorted_scores[-5:].tolist()}")
-                
-                ranked_items_with_scores = [
-                    (retailrocket_ids[i], float(sorted_scores[idx]))
-                    for idx, i in enumerate(sorted_indices)
-                ]
-                logger.info(f"LightGBM ranking complete")
-                logger.info(f"Ranked items sample (first 5): {ranked_items_with_scores[:5]}")
-                logger.info(f"Ranked items sample (last 5): {ranked_items_with_scores[-5:]}")
-                
-                # Update strategy name to reflect two-stage pipeline
-                if strategy_used == "svd":
-                    strategy_used = "two_stage_svd_lgbm"
-                elif strategy_used == "item_similarity":
-                    strategy_used = "two_stage_item_sim_lgbm"
-                elif strategy_used == "popularity":
-                    strategy_used = "popularity_fallback"
+        ranked_items_with_scores = retailrocket_ids_with_scores
+
+        if settings.disable_feature_tables:
+            logger.warning("LightGBM ranking skipped because feature tables are disabled.")
+            strategy_used = f"{strategy_used}_no_ranking"
+        else:
+            # Step 2: Feature Assembly
+            logger.info(f"Starting feature assembly for {len(retailrocket_ids)} items")
+            feature_loader = get_feature_loader()
+            features_df = feature_loader.assemble_features(
+                user_id=user_id,
+                retailrocket_item_ids=retailrocket_ids
+            )
+            logger.info(f"Feature assembly complete: shape={features_df.shape if features_df is not None else 'None'}")
+
+            # Step 3: STAGE 2 - RANKING WITH LIGHTGBM (Precision Layer)
+            # Why two-stage pipeline:
+            # - Stage 1 (Recall): Fast generation of ~100 candidates
+            # - Stage 2 (Precision): Expensive ML ranking of candidates
+            # - Separates concerns: recall vs precision
+            logger.info("Starting LightGBM ranking (Stage 2 - Precision Layer)")
+
+            ranker = get_ranker()
+            if not ranker.is_available() and settings.enable_lightgbm_ranking:
+                try:
+                    ranker.load()
+                    logger.info("LightGBM model loaded successfully")
+                except Exception as e:
+                    logger.warning(f"Failed to load LightGBM model: {e}")
+                    settings.enable_lightgbm_ranking = False
+
+            logger.info(f"LightGBM status: is_available={ranker.is_available()}, enabled={settings.enable_lightgbm_ranking}")
+            if ranker.is_available() and settings.enable_lightgbm_ranking:
+                try:
+                    scores = ranker.predict(features_df)
+                    logger.info(f"Raw scores shape: {scores.shape} | dtype: {scores.dtype}")
+                    logger.info(f"Score statistics: mean={scores.mean():.4f} | std={scores.std():.4f} | min={scores.min():.4f} | max={scores.max():.4f}")
+                    logger.info(f"Unique score count: {len(np.unique(scores))} out of {len(scores)}")
+                    logger.info(f"First 5 raw scores: {scores[:5].tolist()}")
+                    logger.info(f"Last 5 raw scores: {scores[-5:].tolist()}")
                     
-            except Exception as e:
-                logger.error(f"LightGBM ranking failed, using original candidate scores: {e}")
-                log_fallback(logger, "lightgbm_failure", "candidate_order")
-                # Fallback: use original scores from candidate generation
+                    # Sort by score descending - sort both IDs and scores together
+                    sorted_indices = scores.argsort()[::-1]
+                    sorted_scores = scores[sorted_indices]  # Apply sorting to scores too!
+                    logger.info(f"Top 5 sorted scores: {sorted_scores[:5].tolist()}")
+                    logger.info(f"Bottom 5 sorted scores: {sorted_scores[-5:].tolist()}")
+                    
+                    ranked_items_with_scores = [
+                        (retailrocket_ids[i], float(sorted_scores[idx]))
+                        for idx, i in enumerate(sorted_indices)
+                    ]
+                    logger.info(f"LightGBM ranking complete")
+                    logger.info(f"Ranked items sample (first 5): {ranked_items_with_scores[:5]}")
+                    logger.info(f"Ranked items sample (last 5): {ranked_items_with_scores[-5:]}")
+                    
+                    # Update strategy name to reflect two-stage pipeline
+                    if strategy_used == "svd":
+                        strategy_used = "two_stage_svd_lgbm"
+                    elif strategy_used == "item_similarity":
+                        strategy_used = "two_stage_item_sim_lgbm"
+                    elif strategy_used == "popularity":
+                        strategy_used = "popularity_fallback"
+                        
+                except Exception as e:
+                    logger.error(f"LightGBM ranking failed, using original candidate scores: {e}")
+                    log_fallback(logger, "lightgbm_failure", "candidate_order")
+                    # Fallback: use original scores from candidate generation
+                    ranked_items_with_scores = retailrocket_ids_with_scores
+                    strategy_used = f"{strategy_used}_no_ranking"
+            else:
+                logger.info("LightGBM disabled or unavailable, using original candidate scores")
+                # Use original scores from candidate generation (preserves popularity scores)
                 ranked_items_with_scores = retailrocket_ids_with_scores
                 strategy_used = f"{strategy_used}_no_ranking"
-        else:
-            logger.info("LightGBM disabled or unavailable, using original candidate scores")
-            # Use original scores from candidate generation (preserves popularity scores)
-            ranked_items_with_scores = retailrocket_ids_with_scores
-            strategy_used = f"{strategy_used}_no_ranking"
         
         # Extract just IDs for mapping (scores preserved for response)
         retailrocket_ids = [item_id for item_id, _ in ranked_items_with_scores]

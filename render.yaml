@@ -81,6 +81,8 @@ services:
         value: "true"
       - key: DISABLE_SIMILARITY_MODEL
         value: "true"
+      - key: DISABLE_FEATURE_TABLES
+        value: "true"
       - key: SERVICE_NAME
         value: recommendation-service
       - key: SERVICE_PORT

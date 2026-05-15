@@ -36,6 +36,7 @@ class FeatureLoader:
     def __init__(self):
         self.artifacts_path = Path(settings.artifacts_path)
         self.render_deployment_mode = settings.render_deployment_mode
+        self.disabled = settings.disable_feature_tables
         
         # Feature DataFrames (indexed by ID for fast lookup)
         self.user_features: Optional[pd.DataFrame] = None
@@ -59,6 +60,10 @@ class FeatureLoader:
         logger.info("Loading feature tables from Parquet...")
         if self.render_deployment_mode:
             logger.info("Render deployment mode enabled: using memory-optimized feature loading")
+
+        if self.disabled:
+            logger.warning("Feature tables disabled for lightweight deployment mode.")
+            return
         
         try:
             # Load user features
@@ -261,6 +266,9 @@ class FeatureLoader:
         - Vectorized operations (faster than loops)
         """
         features_list = []
+
+        if self.disabled:
+            return pd.DataFrame([{ 'item_id': item_id } for item_id in retailrocket_item_ids])
         
         # Get user features once (reused for all items)
         user_feats = self.get_user_features(user_id) if user_id else {}

@@ -59,14 +59,17 @@ async def lifespan(app: FastAPI):
     try:
         # 1. Load LightGBM Ranker
         logger.info("[1/5] Loading LightGBM Ranker...")
-        ranker = get_ranker()
-        try:
-            ranker.load()
-            logger.info(f"  PASS LightGBM | features={len(ranker.feature_names)}")
-        except Exception as e:
-            logger.error(f"  FAIL LightGBM: {e}")
-            if settings.enable_lightgbm_ranking:
-                raise
+        if settings.disable_feature_tables:
+            logger.warning("  SKIP LightGBM | Ranking disabled because feature tables are unavailable.")
+        else:
+            ranker = get_ranker()
+            try:
+                ranker.load()
+                logger.info(f"  PASS LightGBM | features={len(ranker.feature_names)}")
+            except Exception as e:
+                logger.error(f"  FAIL LightGBM: {e}")
+                if settings.enable_lightgbm_ranking:
+                    raise
         
         # 2. Load SVD Model
         logger.info("[2/5] Loading SVD Model...")
@@ -108,17 +111,21 @@ async def lifespan(app: FastAPI):
         
         # 5. Load Feature Tables
         logger.info("[5/5] Loading Feature Tables...")
-        feature_loader = get_feature_loader()
-        logger.info("DEBUG: Feature loader returned successfully")
-        try:
-            user_count = len(feature_loader.user_features) if feature_loader.user_features is not None else 0
-            logger.info(f"DEBUG: User count = {user_count}")
-            item_count = len(feature_loader.item_features) if feature_loader.item_features is not None else 0
-            logger.info(f"DEBUG: Item count = {item_count}")
-            logger.info(f"  PASS Features | users={user_count} | items={item_count}")
-        except Exception as e:
-            logger.error(f"ERROR accessing features: {e}", exc_info=True)
-            raise
+        if settings.disable_feature_tables:
+            logger.warning("  SKIP Features | Feature tables disabled for lightweight deployment mode.")
+            logger.warning("  SKIP Ranking | LightGBM ranking disabled because feature tables are unavailable.")
+        else:
+            feature_loader = get_feature_loader()
+            logger.info("DEBUG: Feature loader returned successfully")
+            try:
+                user_count = len(feature_loader.user_features) if feature_loader.user_features is not None else 0
+                logger.info(f"DEBUG: User count = {user_count}")
+                item_count = len(feature_loader.item_features) if feature_loader.item_features is not None else 0
+                logger.info(f"DEBUG: Item count = {item_count}")
+                logger.info(f"  PASS Features | users={user_count} | items={item_count}")
+            except Exception as e:
+                logger.error(f"ERROR accessing features: {e}", exc_info=True)
+                raise
         
         logger.info("="*70)
         logger.info(f"Loaded models from version: {settings.model_version}")
