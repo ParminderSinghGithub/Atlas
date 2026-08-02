@@ -17,14 +17,56 @@
 
 ---
 
-## High-Level Architecture
+### High-Level Architecture
 
-Active production runs on Vercel + Render + Neon + Upstash. The Azure AKS topology below is retained as previous deployment documentation/history and architectural evidence.
+### Active Production Architecture (Render + Vercel)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                          USERS (Web Browser)                            │
-│      Active: https://atlas-six-roan.vercel.app/                        │
+│                  https://atlas-six-roan.vercel.app/                    │
+└─────────────────────────────────┬──────────────────────────────────────┘
+                                  │ HTTPS (TLS 1.3)
+                                  ▼
+                    ┌─────────────────────────────┐
+                    │      Frontend (Vercel)      │
+                    │       (React / Vite)        │
+                    └──────────────┬──────────────┘
+                                   │ HTTPS (REST API)
+                                   ▼
+                    ┌─────────────────────────────┐
+                    │     API Gateway (Render)    │
+                    │          (FastAPI)          │
+                    └──────────────┬──────────────┘
+                                   │
+            ┌──────────────────────┼──────────────────────┐
+            ▼                      ▼                      ▼
+  ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+  │   User Service   │   │ Catalog Service  │   │ Recommendation   │
+  │ (FastAPI / Render)│   │(FastAPI / Render)│   │ Service (Render) │
+  │ • Auth (JWT)     │   │ • Products       │   │ • SVD Candidate  │
+  │ • User CRUD      │   │ • Categories     │   │ • LightGBM       │
+  └────────┬─────────┘   │ • Mappings       │   │ • Session Boost  │
+           │             └────────┬─────────┘   └────────┬─────────┘
+           │                      │                      │
+           └──────────────────────┼──────────────────────┘
+                                  ▼
+                       ┌────────────────────┐
+                       │  Neon PostgreSQL   │
+                       │  (Persistent Data) │
+                       └────────────────────┘
+
+                       ┌────────────────────┐
+                       │   Upstash Redis    │
+                       │ (Session Tracking) │
+                       └────────────────────┘
+```
+
+### Historical Azure AKS Topology (Retained for Evidence)
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                          USERS (Web Browser)                            │
 │      Previous: https://4-224-153-183.sslip.io (Azure AKS history)      │
 └─────────────────────────────────┬──────────────────────────────────────┘
                                   │ HTTPS (TLS 1.3)
@@ -40,7 +82,7 @@ Active production runs on Vercel + Render + Neon + Upstash. The Azure AKS topolo
             ┌──────────────────────┴─────────────────────┐
             │                                            │
             ▼                                            ▼
-    ┌───────────────┐                          ┌─────────────────┐
+    ┌─────────────┐                          ┌─────────────────┐
     │   Frontend    │                          │   API Gateway   │
     │   (React)     │                          │   (FastAPI)     │
     │   Port 80     │◄─────────────────────────┤   Port 8000     │
@@ -804,7 +846,7 @@ User Events → Kafka → Spark Streaming → Parquet files → Train models nig
 
 ### 5. Multi-Region Deployment
 ```
-Azure Traffic Manager → Region selector → AKS clusters (US, EU, Asia)
+[Historical / Future Blueprint] Azure Traffic Manager → Region selector → AKS clusters (US, EU, Asia)
 ```
 
 ---

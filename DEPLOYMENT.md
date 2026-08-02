@@ -1,6 +1,6 @@
 # Atlas Deployment Guide
 
-**From Local Development to Azure Kubernetes Service**
+**From Local Development to Render/Vercel (Active Production) and Azure AKS (Historical Evidence)**
 
 > **Current Status**:
 > - Active production deployment uses Vercel (frontend) + Render (backend) + Neon PostgreSQL + Upstash Redis.
@@ -206,7 +206,7 @@ kubectl port-forward -n atlas-local svc/frontend 8080:80
 
 ---
 
-## Azure AKS Deployment
+## Azure AKS Deployment (Historical Evidence)
 
 ### Step 1: Azure Resources Setup
 
@@ -723,19 +723,29 @@ az aks check-acr --resource-group atlas-rg --name atlas-aks --acr atlasacrp1
 
 ## Summary
 
-**Deployment Path**:
+**Active Production Deployment Path**:
+1. Frontend (Vercel): `https://atlas-six-roan.vercel.app/`
+2. API Gateway & Microservices: Public Render web services
+3. Database: Neon PostgreSQL
+4. Cache: Upstash Redis
+
+**Historical Deployment Evidence Path (Azure AKS)**:
 1. Local Docker Compose → Test all services
 2. Local Kubernetes → Validate manifests
-3. Azure AKS → Production deployment
-4. NGINX Ingress → Traffic routing
-5. Let's Encrypt → HTTPS encryption
+3. Azure AKS → Cluster deployment (`4-224-153-183.sslip.io`)
+4. NGINX Ingress → Ingress traffic routing
+5. Let's Encrypt → Automated TLS cert-manager
 
-**Current State**:
-- [✓] Deployed to Azure AKS
-- [✓] Public IP: `4.224.153.183`
-- [✓] HTTPS: `https://4-224-153-183.sslip.io/`
-- [✓] All services healthy
-- [!] Staging certificate (browser warning)
+**Active Production State**:
+- [✓] Frontend live on Vercel
+- [✓] Microservices live on Render
+- [✓] Neon PostgreSQL database online
+- [✓] Upstash Redis cache online
+
+**Historical Azure AKS Evidence State**:
+- [✓] Preserved manifests & infrastructure evidence
+- [✓] Documented IP: `4.224.153.183`
+- [✓] Documented Ingress: `https://4-224-153-183.sslip.io/`
 
 **Production-Ready Improvements**:
 - [ ] Switch to production TLS certificate (custom domain or wait for rate limit reset)

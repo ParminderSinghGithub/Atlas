@@ -8,7 +8,7 @@
 
 Azure AKS documentation remains in this repository as architecture/deployment evidence. The active live deployment moved to Render/Vercel/Neon due to resource constraints, infrastructure migration, and deployment optimization for free-tier operations.
 
-[![Tech Stack](https://img.shields.io/badge/Stack-React%20%7C%20FastAPI%20%7C%20K8s-blue)]()
+[![Tech Stack](https://img.shields.io/badge/Active_Stack-React%20%7C%20FastAPI%20%7C%20Render-blue)]()
 [![ML Models](https://img.shields.io/badge/ML-SVD%20%7C%20LightGBM%20%7C%20Session--Aware-green)]()
 [![Deployment](https://img.shields.io/badge/Deployment-Render%20%2B%20Vercel-blue)]()
 [![History](https://img.shields.io/badge/History-Azure%20AKS-orange)]()
@@ -120,6 +120,49 @@ This is an **intentional architectural decision** to prioritize deployment readi
 
 ## Architecture Overview
 
+### Active Production Architecture (Render + Vercel)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         USERS (Browser)                         │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ HTTPS (TLS 1.3)
+                             ▼
+                  ┌──────────────────────┐
+                  │   Frontend (Vercel)  │
+                  │   (React / Vite)     │
+                  └──────────┬───────────┘
+                             │ HTTPS (REST API)
+                             ▼
+                  ┌──────────────────────┐
+                  │     API Gateway      │
+                  │   (FastAPI / Render) │
+                  └──────────┬───────────┘
+                             │
+          ┌──────────────────┼──────────────────┐
+          ▼                  ▼                  ▼
+┌──────────────────┐┌──────────────────┐┌──────────────────┐
+│   User Service   ││ Catalog Service  ││ Recommendation   │
+│  (Auth + Users)  ││ (Products + Cat) ││   Service (ML)   │
+│(FastAPI / Render)││(FastAPI / Render)││(FastAPI / Render)│
+└────────┬─────────┘└────────┬─────────┘└────────┬─────────┘
+         │                   │                   │
+         └─────────────┬─────┴───────────────────┘
+                       │
+                       ▼
+          ┌────────────────────────┐
+          │    Neon PostgreSQL     │
+          │   (Persistent Data)    │
+          └────────────────────────┘
+                       
+          ┌────────────────────────┐
+          │     Upstash Redis      │
+          │   (Session Tracking)   │
+          └────────────────────────┘
+```
+
+### Historical Azure AKS Topology (Retained for Evidence)
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         USERS (Browser)                         │
@@ -163,12 +206,14 @@ This is an **intentional architectural decision** to prioritize deployment readi
 
 ### Request Flow
 
-1. **User → Ingress**: HTTPS request to `4-224-153-183.sslip.io`
-2. **Ingress → Frontend/API**: Routes to frontend (/) or API Gateway (/api/*)
-3. **API Gateway → Services**: Proxies to microservices based on path
-4. **Services → Database**: Query PostgreSQL for products, users, mappings
-5. **Recommendation Service → Redis**: Fetches session data for reranking
-6. **Response → User**: JSON data rendered in React UI
+1. **User → Vercel**: HTTPS request to `https://atlas-six-roan.vercel.app/`
+2. **Frontend → API Gateway**: API calls directed to Render API Gateway base URL (`/api/*`)
+3. **API Gateway → Microservices**: Gateway proxies to downstream Render services (`user-service`, `catalog-service`, `recommendation-service`)
+4. **Services → Database**: Microservices query Neon PostgreSQL for products, users, mappings
+5. **Recommendation Service → Redis**: Fetches active session state from Upstash Redis for reranking
+6. **Response → User**: Enriched JSON data rendered in React UI
+
+*(Historical Azure ingress flow via `4-224-153-183.sslip.io` remains documented in deployment history)*
 
 ### ML Inference Flow
 
@@ -354,7 +399,7 @@ python tools/amazon-integration/update_latent_item_mappings.py
 
 **Previous deployment (retained for documentation/history)**
 
-The platform is deployed on **Azure Kubernetes Service** with the following configuration:
+The platform was historically deployed on **Azure Kubernetes Service** with the following configuration:
 
 - **Cluster**: `atlas-aks` (East US, 1 node)
 - **Container Registry**: `atlasacrp1.azurecr.io`

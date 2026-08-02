@@ -432,6 +432,8 @@ def retrain_models():
 
 ## Inference Architecture
 
+*Note: Active cloud production operates in deployment-optimized inference mode (popularity + latent mapping + session reranking); full LightGBM pipeline remains available in local/K8s environments.*
+
 ### Service Startup (Model Loading)
 
 ```python
