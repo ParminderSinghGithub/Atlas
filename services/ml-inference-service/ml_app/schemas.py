@@ -89,3 +89,16 @@ class ReadinessResponse(BaseModel):
     ready: bool = Field(..., description="Whether service is ready to serve inference requests")
     model_version: str = Field(..., description="Loaded model version")
     models_loaded: dict = Field(..., description="Status of individual models and feature tables")
+    integrity_verified: bool = Field(False, description="Whether all artifact checksums and schemas match")
+    errors: List[str] = Field(default_factory=list, description="Integrity or compatibility errors if unready")
+
+
+class MetadataResponse(BaseModel):
+    """Metadata response detailing loaded models, checksums, and feature schemas."""
+    service_name: str = Field(..., description="Service identifier")
+    model_version: str = Field(..., description="Active model version")
+    integrity_verified: bool = Field(..., description="Overall artifact integrity status")
+    manifest_found: bool = Field(..., description="Whether artifact_manifest.json was located")
+    artifacts: dict = Field(default_factory=dict, description="Artifact checksum and existence statuses")
+    feature_compatibility: dict = Field(default_factory=dict, description="Ranker and feature store compatibility breakdown")
+    errors: List[str] = Field(default_factory=list, description="Any validation errors encountered")

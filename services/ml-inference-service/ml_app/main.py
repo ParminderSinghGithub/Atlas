@@ -22,11 +22,13 @@ from ml_app.schemas import (
     InferredItem,
     HealthResponse,
     ReadinessResponse,
+    MetadataResponse,
 )
 from ml_app.models.svd import get_svd_model
 from ml_app.models.similarity import get_similarity_model
 from ml_app.models.lightgbm_ranker import get_ranker
 from ml_app.features.loader import get_feature_loader
+from ml_app.core.manifest import ArtifactVerifier, ArtifactVerificationResult
 
 # Initialize logging
 setup_logging()
@@ -36,7 +38,7 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Service lifespan: load ML artifacts at startup.
+    Service lifespan: load ML artifacts at startup and verify integrity/compatibility.
     """
     logger.info("=" * 70)
     logger.info("STARTING ATLAS EXTERNAL ML INFERENCE SERVICE")
@@ -62,14 +64,27 @@ async def lifespan(app: FastAPI):
     ranker = get_ranker()
     ranker_loaded = ranker.load()
 
+    # 5. Verify Artifact Checksums & Compatibility
+    logger.info("[5/5] Verifying Artifact Integrity and Schema Compatibility...")
+    verifier = ArtifactVerifier()
+    verification_result = verifier.verify_all(
+        ranker_features=ranker.feature_names if ranker.is_available() else None,
+        user_features_cols=features.user_feature_cols if features.is_available() else None,
+        item_features_cols=features.item_feature_cols if features.is_available() else None,
+    )
+    app.state.verification_result = verification_result
+
     logger.info("=" * 70)
     logger.info(
-        "ML ARTIFACTS LOAD STATUS: SVD=%s | Similarity=%s | Features=%s | LightGBM=%s",
+        "ML ARTIFACTS LOAD STATUS: SVD=%s | Similarity=%s | Features=%s | LightGBM=%s | IntegrityVerified=%s",
         svd_loaded,
         sim_loaded,
         feats_loaded,
         ranker_loaded,
+        verification_result.is_valid,
     )
+    if not verification_result.is_valid:
+        logger.error("ARTIFACT INTEGRITY/COMPATIBILITY ERRORS: %s", verification_result.errors)
     logger.info("=" * 70)
 
     yield
@@ -97,7 +112,7 @@ async def health():
 
 @app.get("/ready", response_model=ReadinessResponse)
 async def readiness():
-    """Readiness probe: verifies all model artifacts are loaded and ready."""
+    """Readiness probe: verifies all model artifacts are loaded and pass integrity checks."""
     svd = get_svd_model()
     similarity = get_similarity_model()
     ranker = get_ranker()
@@ -110,18 +125,59 @@ async def readiness():
         "features": features.is_available(),
     }
 
-    is_ready = any(models_status.values())
+    # Retrieve verification result from app state if available
+    verification_result: Optional[ArtifactVerificationResult] = getattr(app.state, "verification_result", None)
+    if verification_result is None:
+        verifier = ArtifactVerifier()
+        verification_result = verifier.verify_all(
+            ranker_features=ranker.feature_names if ranker.is_available() else None,
+            user_features_cols=features.user_feature_cols if features.is_available() else None,
+            item_features_cols=features.item_feature_cols if features.is_available() else None,
+        )
+
+    has_models = any(models_status.values())
+    is_ready = has_models and verification_result.is_valid
 
     response = ReadinessResponse(
         ready=is_ready,
         model_version=settings.model_version,
         models_loaded=models_status,
+        integrity_verified=verification_result.is_valid,
+        errors=verification_result.errors,
     )
 
     if not is_ready:
-        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=response.dict())
+        payload = response.dict() if hasattr(response, "dict") else response.model_dump()
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=payload)
 
     return response
+
+
+@app.get("/metadata", response_model=MetadataResponse)
+async def metadata():
+    """Metadata probe: returns loaded artifact versions, checksum statuses, and feature schemas."""
+    svd = get_svd_model()
+    ranker = get_ranker()
+    features = get_feature_loader()
+
+    verification_result: Optional[ArtifactVerificationResult] = getattr(app.state, "verification_result", None)
+    if verification_result is None:
+        verifier = ArtifactVerifier()
+        verification_result = verifier.verify_all(
+            ranker_features=ranker.feature_names if ranker.is_available() else None,
+            user_features_cols=features.user_feature_cols if features.is_available() else None,
+            item_features_cols=features.item_feature_cols if features.is_available() else None,
+        )
+
+    return MetadataResponse(
+        service_name=settings.service_name,
+        model_version=settings.model_version,
+        integrity_verified=verification_result.is_valid,
+        manifest_found=verification_result.manifest_found,
+        artifacts=verification_result.artifacts_checked,
+        feature_compatibility=verification_result.feature_compatibility,
+        errors=verification_result.errors,
+    )
 
 
 @app.post("/infer", response_model=InferenceResponse)
