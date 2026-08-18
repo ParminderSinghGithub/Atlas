@@ -68,75 +68,90 @@ async def lifespan(app: FastAPI):
     logger.info("="*70)
     
     try:
-        # 1. Load LightGBM Ranker
-        logger.info("[1/5] Loading LightGBM Ranker...")
-        if settings.disable_feature_tables:
-            logger.warning("  SKIP LightGBM | Ranking disabled because feature tables are unavailable.")
-        else:
-            ranker = get_ranker()
+        if settings.ml_inference_enabled:
+            logger.info("External ML mode active (ml_inference_enabled=true).")
+            logger.info("Skipping local load of heavy artifacts (SVD, Similarity, Feature Tables, LightGBM) to preserve Render memory.")
+            
+            # Load only lightweight Popularity baseline for safe local fallback
+            logger.info("[1/1] Loading Popularity Baseline (local fallback)...")
+            popularity = get_popularity_model()
             try:
-                ranker.load()
-                logger.info(f"  PASS LightGBM | features={len(ranker.feature_names)}")
+                popularity.load()
+                logger.info(f"  PASS Popularity | items={len(popularity.popularity_scores)}")
             except Exception as e:
-                logger.error(f"  FAIL LightGBM: {e}")
-                if settings.enable_lightgbm_ranking:
+                logger.error(f"  FAIL Popularity: {e}")
+                raise
+        else:
+            # Local ML Mode (for local development/testing)
+            # 1. Load LightGBM Ranker
+            logger.info("[1/5] Loading LightGBM Ranker...")
+            if settings.disable_feature_tables:
+                logger.warning("  SKIP LightGBM | Ranking disabled because feature tables are unavailable.")
+            else:
+                ranker = get_ranker()
+                try:
+                    ranker.load()
+                    logger.info(f"  PASS LightGBM | features={len(ranker.feature_names)}")
+                except Exception as e:
+                    logger.error(f"  FAIL LightGBM: {e}")
+                    if settings.enable_lightgbm_ranking:
+                        raise
+            
+            # 2. Load SVD Model
+            logger.info("[2/5] Loading SVD Model...")
+            svd = get_svd_model()
+            try:
+                svd.load()
+                if svd.is_available():
+                    logger.info(f"  PASS SVD | users={len(svd.user_mapping)} | items={len(svd.item_mapping)}")
+                else:
+                    logger.warning("  SKIP SVD | SVD model not found — continuing without SVD recommender.")
+            except Exception as e:
+                logger.error(f"  FAIL SVD: {e}")
+                if settings.enable_svd:
                     raise
-        
-        # 2. Load SVD Model
-        logger.info("[2/5] Loading SVD Model...")
-        svd = get_svd_model()
-        try:
-            svd.load()
-            if svd.is_available():
-                logger.info(f"  PASS SVD | users={len(svd.user_mapping)} | items={len(svd.item_mapping)}")
-            else:
-                logger.warning("  SKIP SVD | SVD model not found — continuing without SVD recommender.")
-        except Exception as e:
-            logger.error(f"  FAIL SVD: {e}")
-            if settings.enable_svd:
-                raise
-        
-        # 3. Load Item-Item Similarity
-        logger.info("[3/5] Loading Item-Item Similarity...")
-        similarity = get_similarity_model()
-        try:
-            if settings.disable_similarity_model:
-                logger.warning("  SKIP Similarity | Similarity recommender disabled for deployment mode.")
-            else:
-                similarity.load()
-                logger.info(f"  PASS Similarity | items={len(similarity.similarity_dict)}")
-        except Exception as e:
-            logger.error(f"  FAIL Similarity: {e}")
-            if settings.enable_item_similarity:
-                raise
-        
-        # 4. Load Popularity Baseline
-        logger.info("[4/5] Loading Popularity Baseline...")
-        popularity = get_popularity_model()
-        try:
-            popularity.load()
-            logger.info(f"  PASS Popularity | items={len(popularity.popularity_scores)}")
-        except Exception as e:
-            logger.error(f"  FAIL Popularity: {e}")
-            raise
-        
-        # 5. Load Feature Tables
-        logger.info("[5/5] Loading Feature Tables...")
-        if settings.disable_feature_tables:
-            logger.warning("  SKIP Features | Feature tables disabled for lightweight deployment mode.")
-            logger.warning("  SKIP Ranking | LightGBM ranking disabled because feature tables are unavailable.")
-        else:
-            feature_loader = get_feature_loader()
-            logger.info("DEBUG: Feature loader returned successfully")
+            
+            # 3. Load Item-Item Similarity
+            logger.info("[3/5] Loading Item-Item Similarity...")
+            similarity = get_similarity_model()
             try:
-                user_count = len(feature_loader.user_features) if feature_loader.user_features is not None else 0
-                logger.info(f"DEBUG: User count = {user_count}")
-                item_count = len(feature_loader.item_features) if feature_loader.item_features is not None else 0
-                logger.info(f"DEBUG: Item count = {item_count}")
-                logger.info(f"  PASS Features | users={user_count} | items={item_count}")
+                if settings.disable_similarity_model:
+                    logger.warning("  SKIP Similarity | Similarity recommender disabled for deployment mode.")
+                else:
+                    similarity.load()
+                    logger.info(f"  PASS Similarity | items={len(similarity.similarity_dict)}")
             except Exception as e:
-                logger.error(f"ERROR accessing features: {e}", exc_info=True)
+                logger.error(f"  FAIL Similarity: {e}")
+                if settings.enable_item_similarity:
+                    raise
+            
+            # 4. Load Popularity Baseline
+            logger.info("[4/5] Loading Popularity Baseline...")
+            popularity = get_popularity_model()
+            try:
+                popularity.load()
+                logger.info(f"  PASS Popularity | items={len(popularity.popularity_scores)}")
+            except Exception as e:
+                logger.error(f"  FAIL Popularity: {e}")
                 raise
+            
+            # 5. Load Feature Tables
+            logger.info("[5/5] Loading Feature Tables...")
+            if settings.disable_feature_tables:
+                logger.warning("  SKIP Features | Feature tables disabled for lightweight deployment mode.")
+                logger.warning("  SKIP Ranking | LightGBM ranking disabled because feature tables are unavailable.")
+            else:
+                feature_loader = get_feature_loader()
+                logger.info("DEBUG: Feature loader returned successfully")
+                try:
+                    user_count = len(feature_loader.user_features) if feature_loader.user_features is not None else 0
+                    logger.info(f"DEBUG: User count = {user_count}")
+                    item_count = len(feature_loader.item_features) if feature_loader.item_features is not None else 0
+                    logger.info(f"DEBUG: Item count = {item_count}")
+                    logger.info(f"  PASS Features | users={user_count} | items={item_count}")
+                except Exception as e:
+                    logger.error(f"ERROR accessing features: {e}", exc_info=True)
+                    raise
         
         logger.info("="*70)
         logger.info(f"Loaded models from version: {settings.model_version}")
