@@ -253,7 +253,8 @@ def save_ranker_model(lgb_artifacts: dict, config: dict, model_version: str):
     lgb_artifacts['model'].save_model(str(model_file))
     
     # Save feature importance
-    importance_file = output_dir / config['artifacts']['feature_importance_file']
+    importance_file_name = config.get('artifacts', {}).get('feature_importance_file', 'feature_importance.csv')
+    importance_file = output_dir / importance_file_name
     logger.info(f"Saving feature importance to {importance_file}")
     lgb_artifacts['feature_importance'].to_csv(importance_file, index=False)
     

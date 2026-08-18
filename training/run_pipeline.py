@@ -69,7 +69,12 @@ def run_step(script_name: str, args: list, dry_run: bool = False) -> int:
     """
     # Build command
     python_exe = get_python_executable()
-    cmd = [python_exe, script_name] + args
+    script_path = Path(script_name)
+    if not script_path.exists():
+        alt_path = Path(__file__).parent / script_path.name
+        if alt_path.exists():
+            script_path = alt_path
+    cmd = [python_exe, str(script_path)] + args
     cmd_str = ' '.join(cmd)
     
     logger.info(f"{'[DRY RUN] ' if dry_run else ''}Running: {cmd_str}")

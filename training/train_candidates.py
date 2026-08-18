@@ -335,13 +335,38 @@ def save_candidate_models(svd_artifacts, item_similarity_artifacts,
                 'created_at': datetime.now().isoformat()
             }, f)
     
+    # Save Popularity Baseline artifact
+    features_dir = Path(config['features']['output_dir'])
+    item_features_path = features_dir / config['features']['item_features_file']
+    if item_features_path.exists():
+        try:
+            df_items = pd.read_parquet(item_features_path)
+            id_col = 'product_id' if 'product_id' in df_items.columns else ('item_id' if 'item_id' in df_items.columns else None)
+            score_col = 'popularity_score' if 'popularity_score' in df_items.columns else ('total_views' if 'total_views' in df_items.columns else None)
+            if id_col and score_col:
+                df_sorted = df_items.sort_values(by=score_col, ascending=False)
+                pop_scores = dict(zip(df_sorted[id_col].astype(int), df_sorted[score_col].astype(float)))
+                pop_items = [int(x) for x in df_sorted[id_col]]
+                pop_artifact = {
+                    'popularity_scores': pop_scores,
+                    'popular_items': pop_items,
+                    'category_popularity': {},
+                    'created_at': datetime.now().isoformat()
+                }
+                pop_file = output_dir / "popularity_baseline.pkl"
+                logger.info(f"Saving Popularity Baseline to {pop_file}")
+                with open(pop_file, 'wb') as f:
+                    pickle.dump(pop_artifact, f)
+        except Exception as e:
+            logger.warning(f"Could not generate popularity_baseline.pkl: {e}")
+    
     # Save metadata summary
     metadata = {
         'created_at': datetime.now().isoformat(),
         'model_version': model_version,
         'models': {},
         'notes': {
-            'popularity': 'Derived from item_features.parquet at serving time (not versioned)'
+            'popularity': 'Precomputed baseline from item features popularity score'
         }
     }
     
