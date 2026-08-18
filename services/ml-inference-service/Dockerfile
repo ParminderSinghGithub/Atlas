@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY services/ml-inference-service/requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Final runtime image
@@ -28,7 +28,10 @@ COPY --from=builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 
 # Copy application source
-COPY ml_app/ /app/ml_app/
+COPY services/ml-inference-service/ml_app/ /app/ml_app/
+
+# Copy production ML artifacts from notebooks
+COPY notebooks/artifacts/ /artifacts/
 
 # Environment defaults (Hugging Face Spaces default port 7860 or internal 8001)
 ENV PYTHONUNBUFFERED=1 \
