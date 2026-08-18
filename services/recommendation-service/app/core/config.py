@@ -12,7 +12,13 @@ Environment variables:
 import os
 from urllib.parse import urlparse
 
-from pydantic_settings import BaseSettings
+try:
+    from pydantic_settings import BaseSettings
+except ImportError:
+    try:
+        from pydantic.v1 import BaseSettings
+    except ImportError:
+        from pydantic import BaseSettings
 from typing import Optional
 from pathlib import Path
 
@@ -59,6 +65,11 @@ class Settings(BaseSettings):
     render_deployment_mode: bool = False
     disable_similarity_model: bool = False
     disable_feature_tables: bool = False
+    
+    # External ML Inference Boundary
+    ml_inference_enabled: bool = False
+    ml_inference_url: Optional[str] = None
+    ml_inference_timeout: float = 2.0
     
     class Config:
         env_file = ".env"

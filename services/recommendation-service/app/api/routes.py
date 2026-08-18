@@ -10,7 +10,10 @@ from typing import Optional, List, Dict, Any
 from uuid import UUID
 import asyncio
 import time
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None
 import httpx
 
 from app.api.schemas import (
@@ -31,6 +34,7 @@ from app.session.reranker import get_session_reranker
 from app.decisioning.rules import apply_all_rules
 from app.core.config import settings, get_catalog_service_url
 from app.core.logging import get_logger, log_request, log_fallback, log_recommendation
+from app.inference.client import get_inference_client
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -201,20 +205,142 @@ async def get_recommendations(
     
     try:
         logger.info("Resolved catalog metadata base URL: %s", get_catalog_service_url())
-        # Step 1: Candidate Generation
-        candidate_result = await generate_candidates(
-            user_id=user_id,
-            product_id=product_id,
-            k=settings.candidate_pool_size
-        )
-        
-        # Handle different return formats
-        if len(candidate_result) == 3:
-            # Category-based similarity returns (strategy, uuids, True)
-            strategy_used, catalog_uuids, skip_mapping = candidate_result
-            logger.info(f"Candidate generation (direct UUIDs): strategy={strategy_used}, count={len(catalog_uuids) if catalog_uuids else 0}")
+
+        # Step 0: Check External ML Inference boundary
+        external_ml_candidates = None
+        if settings.ml_inference_enabled and settings.ml_inference_url:
+            inference_client = get_inference_client()
+            try:
+                retailrocket_item_id = None
+                if product_id is not None:
+                    if isinstance(product_id, (int, str)) and str(product_id).isdigit():
+                        retailrocket_item_id = int(product_id)
+
+                ext_resp = await inference_client.infer(
+                    user_id=str(user_id) if user_id is not None else None,
+                    item_id=retailrocket_item_id,
+                    k=settings.candidate_pool_size,
+                    model_version=getattr(settings, 'model_version', None)
+                )
+
+                if ext_resp and ext_resp.status == "success" and ext_resp.items:
+                    ranked_items = [(item.item_id, item.score) for item in ext_resp.items]
+                    logger.info(
+                        "External ML inference succeeded | strategy=%s | count=%d",
+                        ext_resp.strategy_used,
+                        len(ranked_items)
+                    )
+                    external_ml_candidates = (ext_resp.strategy_used, ranked_items)
+                else:
+                    status_reason = ext_resp.status if ext_resp else "no_response"
+                    logger.info(
+                        "External ML inference returned status='%s', falling back to local pipeline",
+                        status_reason
+                    )
+                    log_fallback(logger, f"external_ml_{status_reason}", "local_pipeline")
+            except Exception as e:
+                logger.exception("External ML inference exception, falling back to local pipeline: %s", e)
+                log_fallback(logger, "external_ml_exception", "local_pipeline")
+
+        if external_ml_candidates is not None:
+            strategy_used, ranked_items_with_scores = external_ml_candidates
+            retailrocket_ids = [item_id for item_id, _ in ranked_items_with_scores]
+        else:
+            # Step 1: Candidate Generation (Local Pipeline)
+            candidate_result = await generate_candidates(
+                user_id=user_id,
+                product_id=product_id,
+                k=settings.candidate_pool_size
+            )
             
-            if not catalog_uuids:
+            # Handle different return formats
+            if len(candidate_result) == 3:
+                # Category-based similarity returns (strategy, uuids, True)
+                strategy_used, catalog_uuids, skip_mapping = candidate_result
+                logger.info(f"Candidate generation (direct UUIDs): strategy={strategy_used}, count={len(catalog_uuids) if catalog_uuids else 0}")
+                
+                if not catalog_uuids:
+                    logger.warning(
+                        "No candidates generated, returning empty recommendations | strategy=%s | user_id=%s | product_id=%s | empty_candidates=True",
+                        strategy_used,
+                        user_id,
+                        product_id,
+                    )
+                    return RecommendationResponse(
+                        recommendations=[],
+                        strategy_used=strategy_used,
+                        total_candidates=0,
+                        total_returned=0
+                    )
+                
+                # Skip feature assembly, ranking, and mapping - go straight to metadata
+                product_metadata = await fetch_product_metadata(catalog_uuids[:k])
+                
+                # Build recommendations with mock scores
+                recommendations = [
+                    RecommendedProduct(
+                        product_id=pid,
+                        score=1.0 - (rank * 0.1),  # Descending scores
+                        rank=rank + 1,
+                        name=product_metadata.get(pid, {}).get('name'),
+                        price=product_metadata.get(pid, {}).get('price'),
+                        category_name=product_metadata.get(pid, {}).get('category_name'),
+                        image_url=product_metadata.get(pid, {}).get('image_url'),
+                        reason=f"Recommended via {strategy_used}" if include_metadata else None,
+                        confidence=1.0 if include_metadata else None
+                    )
+                    for rank, pid in enumerate(catalog_uuids[:k])
+                ]
+                
+                latency_ms = (time.time() - start_time) * 1000
+                log_request(
+                    logger,
+                    "/api/v1/recommendations",
+                    {"user_id": str(user_id), "product_id": str(product_id), "k": k},
+                    latency_ms
+                )
+                
+                # Log structured recommendation event for monitoring
+                log_recommendation(
+                    logger=logger,
+                    user_id=user_id,
+                    product_id=product_id,
+                    strategy_used=strategy_used,
+                    model_version=getattr(settings, 'model_version', 'unknown'),
+                    recommended_items=catalog_uuids[:k],
+                    latency_ms=latency_ms
+                )
+                
+                return RecommendationResponse(
+                    recommendations=recommendations,
+                    strategy_used=strategy_used,
+                    total_candidates=len(catalog_uuids),
+                    total_returned=len(recommendations)
+                )
+            else:
+                # Normal flow: (strategy, retailrocket_ids)
+                strategy_used, candidate_data = candidate_result
+                
+                # Normalize candidate data: can be List[int] or List[(int, float)]
+                # Convert to uniform format: List[(int, float)]
+                if candidate_data and isinstance(candidate_data[0], tuple):
+                    # Already has scores: [(id, score), ...]
+                    retailrocket_ids_with_scores = candidate_data
+                    logger.info(f"Candidates include scores (from popularity)")
+                else:
+                    # IDs only: [id, id, ...] - assign descending scores
+                    retailrocket_ids_with_scores = [
+                        (item_id, 1.0 - (i * 0.01))
+                        for i, item_id in enumerate(candidate_data)
+                    ]
+                    logger.info(f"Candidates without scores, assigned descending scores (1.0 to {1.0 - (len(candidate_data) * 0.01):.2f})")
+                
+                # Extract IDs for feature assembly
+                retailrocket_ids = [item_id for item_id, _ in retailrocket_ids_with_scores]
+            
+            logger.info(f"Candidate generation complete: strategy={strategy_used}, count={len(retailrocket_ids) if retailrocket_ids else 0}")
+            
+            if not retailrocket_ids:
                 logger.warning(
                     "No candidates generated, returning empty recommendations | strategy=%s | user_id=%s | product_id=%s | empty_candidates=True",
                     strategy_used,
@@ -228,168 +354,84 @@ async def get_recommendations(
                     total_returned=0
                 )
             
-            # Skip feature assembly, ranking, and mapping - go straight to metadata
-            product_metadata = await fetch_product_metadata(catalog_uuids[:k])
+            logger.debug(f"Generated {len(retailrocket_ids)} candidates using {strategy_used}")
             
-            # Build recommendations with mock scores
-            recommendations = [
-                RecommendedProduct(
-                    product_id=pid,
-                    score=1.0 - (rank * 0.1),  # Descending scores
-                    rank=rank + 1,
-                    name=product_metadata.get(pid, {}).get('name'),
-                    price=product_metadata.get(pid, {}).get('price'),
-                    category_name=product_metadata.get(pid, {}).get('category_name'),
-                    image_url=product_metadata.get(pid, {}).get('image_url'),
-                    reason=f"Recommended via {strategy_used}" if include_metadata else None,
-                    confidence=1.0 if include_metadata else None
-                )
-                for rank, pid in enumerate(catalog_uuids[:k])
-            ]
-            
-            latency_ms = (time.time() - start_time) * 1000
-            log_request(
-                logger,
-                "/api/v1/recommendations",
-                {"user_id": str(user_id), "product_id": str(product_id), "k": k},
-                latency_ms
-            )
-            
-            # Log structured recommendation event for monitoring
-            log_recommendation(
-                logger=logger,
-                user_id=user_id,
-                product_id=product_id,
-                strategy_used=strategy_used,
-                model_version=getattr(settings, 'model_version', 'unknown'),
-                recommended_items=catalog_uuids[:k],
-                latency_ms=latency_ms
-            )
-            
-            return RecommendationResponse(
-                recommendations=recommendations,
-                strategy_used=strategy_used,
-                total_candidates=len(catalog_uuids),
-                total_returned=len(recommendations)
-            )
-        else:
-            # Normal flow: (strategy, retailrocket_ids)
-            strategy_used, candidate_data = candidate_result
-            
-            # Normalize candidate data: can be List[int] or List[(int, float)]
-            # Convert to uniform format: List[(int, float)]
-            if candidate_data and isinstance(candidate_data[0], tuple):
-                # Already has scores: [(id, score), ...]
-                retailrocket_ids_with_scores = candidate_data
-                logger.info(f"Candidates include scores (from popularity)")
+            ranked_items_with_scores = retailrocket_ids_with_scores
+
+            if settings.disable_feature_tables:
+                logger.warning("LightGBM ranking skipped because feature tables are disabled.")
+                strategy_used = f"{strategy_used}_no_ranking"
             else:
-                # IDs only: [id, id, ...] - assign descending scores
-                retailrocket_ids_with_scores = [
-                    (item_id, 1.0 - (i * 0.01))
-                    for i, item_id in enumerate(candidate_data)
-                ]
-                logger.info(f"Candidates without scores, assigned descending scores (1.0 to {1.0 - (len(candidate_data) * 0.01):.2f})")
-            
-            # Extract IDs for feature assembly
-            retailrocket_ids = [item_id for item_id, _ in retailrocket_ids_with_scores]
-        
-        logger.info(f"Candidate generation complete: strategy={strategy_used}, count={len(retailrocket_ids) if retailrocket_ids else 0}")
-        
-        if not retailrocket_ids:
-            logger.warning(
-                "No candidates generated, returning empty recommendations | strategy=%s | user_id=%s | product_id=%s | empty_candidates=True",
-                strategy_used,
-                user_id,
-                product_id,
-            )
-            return RecommendationResponse(
-                recommendations=[],
-                strategy_used=strategy_used,
-                total_candidates=0,
-                total_returned=0
-            )
-        
-        logger.debug(f"Generated {len(retailrocket_ids)} candidates using {strategy_used}")
-        
-        ranked_items_with_scores = retailrocket_ids_with_scores
+                # Step 2: Feature Assembly
+                logger.info(f"Starting feature assembly for {len(retailrocket_ids)} items")
+                feature_loader = get_feature_loader()
+                features_df = feature_loader.assemble_features(
+                    user_id=user_id,
+                    retailrocket_item_ids=retailrocket_ids
+                )
+                logger.info(f"Feature assembly complete: shape={features_df.shape if features_df is not None else 'None'}")
 
-        if settings.disable_feature_tables:
-            logger.warning("LightGBM ranking skipped because feature tables are disabled.")
-            strategy_used = f"{strategy_used}_no_ranking"
-        else:
-            # Step 2: Feature Assembly
-            logger.info(f"Starting feature assembly for {len(retailrocket_ids)} items")
-            feature_loader = get_feature_loader()
-            features_df = feature_loader.assemble_features(
-                user_id=user_id,
-                retailrocket_item_ids=retailrocket_ids
-            )
-            logger.info(f"Feature assembly complete: shape={features_df.shape if features_df is not None else 'None'}")
+                # Step 3: STAGE 2 - RANKING WITH LIGHTGBM (Precision Layer)
+                logger.info("Starting LightGBM ranking (Stage 2 - Precision Layer)")
 
-            # Step 3: STAGE 2 - RANKING WITH LIGHTGBM (Precision Layer)
-            # Why two-stage pipeline:
-            # - Stage 1 (Recall): Fast generation of ~100 candidates
-            # - Stage 2 (Precision): Expensive ML ranking of candidates
-            # - Separates concerns: recall vs precision
-            logger.info("Starting LightGBM ranking (Stage 2 - Precision Layer)")
+                ranker = get_ranker()
+                if not ranker.is_available() and settings.enable_lightgbm_ranking:
+                    try:
+                        ranker.load()
+                        logger.info("LightGBM model loaded successfully")
+                    except Exception as e:
+                        logger.exception("Failed to load LightGBM model")
+                        settings.enable_lightgbm_ranking = False
 
-            ranker = get_ranker()
-            if not ranker.is_available() and settings.enable_lightgbm_ranking:
-                try:
-                    ranker.load()
-                    logger.info("LightGBM model loaded successfully")
-                except Exception as e:
-                    logger.exception("Failed to load LightGBM model")
-                    settings.enable_lightgbm_ranking = False
-
-            logger.info(f"LightGBM status: is_available={ranker.is_available()}, enabled={settings.enable_lightgbm_ranking}")
-            if ranker.is_available() and settings.enable_lightgbm_ranking:
-                try:
-                    scores = ranker.predict(features_df)
-                    logger.info(f"Raw scores shape: {scores.shape} | dtype: {scores.dtype}")
-                    logger.info(f"Score statistics: mean={scores.mean():.4f} | std={scores.std():.4f} | min={scores.min():.4f} | max={scores.max():.4f}")
-                    logger.info(f"Unique score count: {len(np.unique(scores))} out of {len(scores)}")
-                    logger.info(f"First 5 raw scores: {scores[:5].tolist()}")
-                    logger.info(f"Last 5 raw scores: {scores[-5:].tolist()}")
-                    
-                    # Sort by score descending - sort both IDs and scores together
-                    sorted_indices = scores.argsort()[::-1]
-                    sorted_scores = scores[sorted_indices]  # Apply sorting to scores too!
-                    logger.info(f"Top 5 sorted scores: {sorted_scores[:5].tolist()}")
-                    logger.info(f"Bottom 5 sorted scores: {sorted_scores[-5:].tolist()}")
-                    
-                    ranked_items_with_scores = [
-                        (retailrocket_ids[i], float(sorted_scores[idx]))
-                        for idx, i in enumerate(sorted_indices)
-                    ]
-                    logger.info(f"LightGBM ranking complete")
-                    logger.info(f"Ranked items sample (first 5): {ranked_items_with_scores[:5]}")
-                    logger.info(f"Ranked items sample (last 5): {ranked_items_with_scores[-5:]}")
-                    
-                    # Update strategy name to reflect two-stage pipeline
-                    if strategy_used == "svd":
-                        strategy_used = "two_stage_svd_lgbm"
-                    elif strategy_used == "item_similarity":
-                        strategy_used = "two_stage_item_sim_lgbm"
-                    elif strategy_used == "popularity":
-                        strategy_used = "popularity_fallback"
+                logger.info(f"LightGBM status: is_available={ranker.is_available()}, enabled={settings.enable_lightgbm_ranking}")
+                if ranker.is_available() and settings.enable_lightgbm_ranking:
+                    try:
+                        scores = ranker.predict(features_df)
+                        logger.info(f"Raw scores shape: {scores.shape} | dtype: {scores.dtype}")
+                        logger.info(f"Score statistics: mean={scores.mean():.4f} | std={scores.std():.4f} | min={scores.min():.4f} | max={scores.max():.4f}")
+                        logger.info(f"Unique score count: {len(np.unique(scores))} out of {len(scores)}")
+                        logger.info(f"First 5 raw scores: {scores[:5].tolist()}")
+                        logger.info(f"Last 5 raw scores: {scores[-5:].tolist()}")
                         
-                except Exception as e:
-                    logger.exception(
-                        "LightGBM ranking failed, using original candidate scores | user_id=%s | product_id=%s | candidate_count=%s",
-                        user_id,
-                        product_id,
-                        len(retailrocket_ids),
-                    )
-                    log_fallback(logger, "lightgbm_failure", "candidate_order")
-                    # Fallback: use original scores from candidate generation
+                        # Sort by score descending - sort both IDs and scores together
+                        sorted_indices = scores.argsort()[::-1]
+                        sorted_scores = scores[sorted_indices]
+                        logger.info(f"Top 5 sorted scores: {sorted_scores[:5].tolist()}")
+                        logger.info(f"Bottom 5 sorted scores: {sorted_scores[-5:].tolist()}")
+                        
+                        ranked_items_with_scores = [
+                            (retailrocket_ids[i], float(sorted_scores[idx]))
+                            for idx, i in enumerate(sorted_indices)
+                        ]
+                        logger.info(f"LightGBM ranking complete")
+                        logger.info(f"Ranked items sample (first 5): {ranked_items_with_scores[:5]}")
+                        logger.info(f"Ranked items sample (last 5): {ranked_items_with_scores[-5:]}")
+                        
+                        # Update strategy name to reflect two-stage pipeline
+                        if strategy_used == "svd":
+                            strategy_used = "two_stage_svd_lgbm"
+                        elif strategy_used == "item_similarity":
+                            strategy_used = "two_stage_item_sim_lgbm"
+                        elif strategy_used == "popularity":
+                            strategy_used = "popularity_fallback"
+                            
+                    except Exception as e:
+                        logger.exception(
+                            "LightGBM ranking failed, using original candidate scores | user_id=%s | product_id=%s | candidate_count=%s",
+                            user_id,
+                            product_id,
+                            len(retailrocket_ids),
+                        )
+                        log_fallback(logger, "lightgbm_failure", "candidate_order")
+                        # Fallback: use original scores from candidate generation
+                        ranked_items_with_scores = retailrocket_ids_with_scores
+                        strategy_used = f"{strategy_used}_no_ranking"
+                else:
+                    logger.info("LightGBM disabled or unavailable, using original candidate scores")
+                    # Use original scores from candidate generation (preserves popularity scores)
                     ranked_items_with_scores = retailrocket_ids_with_scores
                     strategy_used = f"{strategy_used}_no_ranking"
-            else:
-                logger.info("LightGBM disabled or unavailable, using original candidate scores")
-                # Use original scores from candidate generation (preserves popularity scores)
-                ranked_items_with_scores = retailrocket_ids_with_scores
-                strategy_used = f"{strategy_used}_no_ranking"
+
         
         # Extract just IDs for mapping (scores preserved for response)
         retailrocket_ids = [item_id for item_id, _ in ranked_items_with_scores]
@@ -722,10 +764,18 @@ async def health_check():
             await mapper.connect()
         db_connected = mapper.pool is not None
         
+        # Check external ML inference status
+        ml_inference_status = "disabled"
+        if settings.ml_inference_enabled and settings.ml_inference_url:
+            inference_client = get_inference_client()
+            is_ext_healthy = await inference_client.health_check()
+            ml_inference_status = "connected" if is_ext_healthy else "unreachable"
+
         return HealthResponse(
             status="healthy",
             models_loaded=models_loaded,
-            database_connected=db_connected
+            database_connected=db_connected,
+            ml_inference_status=ml_inference_status
         )
     
     except Exception:
@@ -733,7 +783,8 @@ async def health_check():
         return HealthResponse(
             status="unhealthy",
             models_loaded={},
-            database_connected=False
+            database_connected=False,
+            ml_inference_status="error"
         )
 
 

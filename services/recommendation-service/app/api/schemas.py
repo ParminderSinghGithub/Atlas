@@ -103,6 +103,7 @@ class HealthResponse(BaseModel):
     status: str = Field(..., description="Service status")
     models_loaded: dict = Field(..., description="Model availability status")
     database_connected: bool = Field(..., description="Database connection status")
+    ml_inference_status: Optional[str] = Field("disabled", description="External ML inference status ('disabled', 'connected', 'unreachable')")
 
 
 class SessionTrackRequest(BaseModel):
