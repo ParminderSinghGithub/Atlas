@@ -3,7 +3,7 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install build dependencies if needed
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgomp1 \
@@ -20,6 +20,7 @@ WORKDIR /app
 # Install runtime dependencies (OpenMP for LightGBM)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed python dependencies from builder
@@ -29,16 +30,16 @@ ENV PATH=/root/.local/bin:$PATH
 # Copy application source
 COPY ml_app/ /app/ml_app/
 
-# Environment defaults
+# Environment defaults (Hugging Face Spaces default port 7860 or internal 8001)
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=8001 \
     ARTIFACTS_PATH=/artifacts \
     MODEL_VERSION=production_v1
 
-EXPOSE 8001
+EXPOSE 8001 7860
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')" || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request, os; p = os.getenv('PORT', '8001'); urllib.request.urlopen(f'http://localhost:{p}/health')" || exit 1
 
-CMD ["uvicorn", "ml_app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["sh", "-c", "uvicorn ml_app.main:app --host 0.0.0.0 --port ${PORT:-8001}"]

@@ -14,7 +14,7 @@ import numpy as np
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
 
-from ml_app.core.config import settings
+from ml_app.core.config import settings, get_active_model_version
 from ml_app.core.logging import setup_logging, get_logger
 from ml_app.schemas import (
     InferenceRequest,
@@ -140,7 +140,7 @@ async def readiness():
 
     response = ReadinessResponse(
         ready=is_ready,
-        model_version=settings.model_version,
+        model_version=get_active_model_version(),
         models_loaded=models_status,
         integrity_verified=verification_result.is_valid,
         errors=verification_result.errors,
@@ -160,9 +160,10 @@ async def metadata():
     ranker = get_ranker()
     features = get_feature_loader()
 
+    active_version = get_active_model_version()
     verification_result: Optional[ArtifactVerificationResult] = getattr(app.state, "verification_result", None)
-    if verification_result is None:
-        verifier = ArtifactVerifier()
+    if verification_result is None or getattr(verification_result, "model_version", None) != active_version:
+        verifier = ArtifactVerifier(model_version=active_version)
         verification_result = verifier.verify_all(
             ranker_features=ranker.feature_names if ranker.is_available() else None,
             user_features_cols=features.user_feature_cols if features.is_available() else None,
@@ -171,7 +172,7 @@ async def metadata():
 
     return MetadataResponse(
         service_name=settings.service_name,
-        model_version=settings.model_version,
+        model_version=active_version,
         integrity_verified=verification_result.is_valid,
         manifest_found=verification_result.manifest_found,
         artifacts=verification_result.artifacts_checked,
@@ -190,7 +191,7 @@ async def infer(request: InferenceRequest):
     """
     start_time = time.time()
     k = request.k or settings.candidate_pool_size
-    model_version = request.model_version or settings.model_version
+    model_version = request.model_version or get_active_model_version()
 
     candidate_ids: Optional[List[int]] = None
     strategy_source = "unknown"

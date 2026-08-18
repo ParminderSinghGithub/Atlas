@@ -70,16 +70,51 @@ def resolve_artifacts_dir() -> Path:
     return configured
 
 
+import json
+
+
+def get_promoted_model_metadata() -> Optional[dict]:
+    """Load promoted_model.json if available."""
+    base_dir = resolve_artifacts_dir()
+    promoted_file = base_dir / "models" / "promoted_model.json"
+    if promoted_file.exists():
+        try:
+            with open(promoted_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+    return None
+
+
+def get_active_model_version() -> str:
+    """
+    Resolve active model version with clear precedence:
+    1. Explicit MODEL_VERSION environment variable (if non-empty and not 'promoted')
+    2. Promoted version recorded in models/promoted_model.json
+    3. Configured/fallback version (production_v1)
+    """
+    env_version = os.getenv("MODEL_VERSION", "").strip()
+    if env_version and env_version.lower() != "promoted":
+        return env_version
+
+    promoted_meta = get_promoted_model_metadata()
+    if promoted_meta and "promoted_version" in promoted_meta:
+        return str(promoted_meta["promoted_version"])
+
+    return getattr(settings, "model_version", "production_v1") or "production_v1"
+
+
 def resolve_model_path(filename: str) -> Path:
     """
     Resolve specific model artifact path.
     Order:
-    1. {artifacts_dir}/models/{model_version}/{filename}
+    1. {artifacts_dir}/models/{active_model_version}/{filename}
     2. {artifacts_dir}/models/{filename}
     """
     base_dir = resolve_artifacts_dir()
+    active_version = get_active_model_version()
 
-    versioned = base_dir / "models" / settings.model_version / filename
+    versioned = base_dir / "models" / active_version / filename
     if versioned.exists():
         return versioned
 
