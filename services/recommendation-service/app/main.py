@@ -27,6 +27,7 @@ from app.models.similarity import get_similarity_model
 from app.features.loader import get_feature_loader
 from app.mapping.latent_mapper import get_latent_mapper
 from app.session.reranker import get_session_reranker
+from app.personalization.user_preferences import get_user_preference_loader
 
 # Setup logging
 setup_logging()
@@ -173,6 +174,18 @@ async def lifespan(app: FastAPI):
             logger.info(f"  PASS Session tracking enabled")
         else:
             logger.info(f"  SKIP Session tracking disabled (set REDIS_ENABLED=true to enable)")
+
+        # Initialize long-term user preference loader
+        logger.info("="*70)
+        logger.info("LONG-TERM PERSONALIZATION")
+        logger.info("="*70)
+        pref_loader = get_user_preference_loader()
+        await pref_loader.connect_db()
+        if settings.redis_enabled:
+            await pref_loader.connect_redis(settings.redis_url)
+            logger.info("  PASS Long-term personalization: DB + Redis cache ready")
+        else:
+            logger.info("  PASS Long-term personalization: DB ready (no Redis cache)")
         
         logger.info("="*70)
         logger.info(f"STARTUP COMPLETE - {settings.service_name}")
@@ -200,9 +213,11 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info(f"Shutting down {settings.service_name}...")
     try:
-        # Close database connection
+        # Close database connections
         mapper = get_latent_mapper()
         await mapper.close()
+        pref_loader = get_user_preference_loader()
+        await pref_loader.close()
         logger.info("Service shutdown complete")
     except Exception as e:
         logger.error(f"Error during shutdown: {e}", exc_info=True)

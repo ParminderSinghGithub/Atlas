@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     disable_similarity_model: bool = False
     disable_feature_tables: bool = False
     
+    # Long-Term User Personalization
+    long_term_personalization_enabled: bool = True  # Disable if events table unavailable
+
     # External ML Inference Boundary
     ml_inference_enabled: bool = False
     ml_inference_url: Optional[str] = None

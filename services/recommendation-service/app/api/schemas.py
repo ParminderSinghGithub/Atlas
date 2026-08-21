@@ -61,6 +61,7 @@ class RecommendedProduct(BaseModel):
     confidence: Optional[float] = Field(None, description="Mapping confidence score")
     pipeline_stage: Optional[str] = Field(None, description="Pipeline stage that generated this recommendation")
     session_boosted: Optional[bool] = Field(None, description="Whether session signals boosted this item")
+    long_term_boosted: Optional[bool] = Field(None, description="Whether long-term preference history boosted this item")
 
 
 class RecommendationResponse(BaseModel):
@@ -78,6 +79,7 @@ class RecommendationResponse(BaseModel):
     # Explainability metadata
     pipeline_explanation: Optional[dict] = Field(None, description="Pipeline stage explanations")
     session_reranking: Optional[dict] = Field(None, description="Session re-ranking metadata")
+    long_term_personalization: Optional[dict] = Field(None, description="Long-term preference personalization metadata")
     
     class Config:
         schema_extra = {

@@ -31,6 +31,7 @@ from app.models.similarity import get_similarity_model
 from app.features.loader import get_feature_loader
 from app.mapping.latent_mapper import get_latent_mapper
 from app.session.reranker import get_session_reranker
+from app.personalization.user_preferences import get_user_preference_loader, apply_long_term_boost
 from app.decisioning.rules import apply_all_rules
 from app.core.config import settings, get_catalog_service_url
 from app.core.logging import get_logger, log_request, log_fallback, log_recommendation
@@ -314,8 +315,32 @@ async def get_recommendations(
                 valid_uuids = await apply_all_rules(catalog_uuids, product_metadata)
                 final_uuids = valid_uuids[:k]
                 final_scores = [1.0 - (rank * 0.05) for rank in range(len(final_uuids))]
-                
-                # Apply Session Re-Ranking if user_id/session is provided
+
+                # Step 7.5: Long-Term Personalization (before session reranking)
+                lt_meta = None
+                if user_id and settings.long_term_personalization_enabled:
+                    try:
+                        pref_loader = get_user_preference_loader()
+                        preferences = await pref_loader.get_preferences(str(user_id))
+                        if not preferences.is_empty():
+                            final_uuids, final_scores, lt_meta = apply_long_term_boost(
+                                candidates=final_uuids,
+                                scores=final_scores,
+                                product_metadata=product_metadata,
+                                preferences=preferences,
+                            )
+                            logger.info(
+                                "Long-term personalization applied (category_similarity path) | user=%s | boosted=%s",
+                                user_id,
+                                lt_meta.get('items_boosted', 0),
+                            )
+                    except Exception:
+                        logger.exception(
+                            "Long-term personalization failed (category_similarity path) | user_id=%s",
+                            user_id,
+                        )
+
+                # Step 8: Session Re-Ranking if user_id/session is provided
                 session_meta = None
                 if user_id and settings.redis_enabled:
                     try:
@@ -331,17 +356,24 @@ async def get_recommendations(
                             final_scores = reranked_scores
                     except Exception:
                         logger.exception("Session re-ranking failed in category similarity path | user_id=%s", user_id)
-                
+
+                # Build boost maps for response metadata
+                session_boost_map = session_meta.get('boost_map', {}) if session_meta else {}
+                lt_boost_map = lt_meta.get('boost_map', {}) if lt_meta else {}
+
                 # Build recommendations
-                boost_map = session_meta.get('boost_map', {}) if session_meta else {}
                 recommendations = []
                 for rank, (pid, score) in enumerate(zip(final_uuids, final_scores)):
-                    boost_info = boost_map.get(pid) or boost_map.get(str(pid)) or {}
-                    is_boosted = boost_info.get('is_boosted', False) or (boost_info.get('boost', 0.0) > 0)
-                    reasons = boost_info.get('reasons', [])
-                    
-                    if is_boosted:
+                    s_info = session_boost_map.get(pid) or session_boost_map.get(str(pid)) or {}
+                    lt_info = lt_boost_map.get(pid) or lt_boost_map.get(str(pid)) or {}
+                    is_session_boosted = s_info.get('is_boosted', False) or (s_info.get('boost', 0.0) > 0)
+                    is_lt_boosted = lt_info.get('is_boosted', False)
+                    reasons = s_info.get('reasons', [])
+
+                    if is_session_boosted:
                         reason = f"Boosted by session intent ({', '.join(reasons)})"
+                    elif is_lt_boosted:
+                        reason = f"Boosted by long-term preference ({lt_info.get('reason', '')})"
                     elif include_metadata:
                         reason = f"Recommended via {strategy_used}"
                     else:
@@ -359,10 +391,11 @@ async def get_recommendations(
                             image_url=product_metadata.get(pid, {}).get('image_url'),
                             reason=reason,
                             confidence=1.0 if include_metadata else None,
-                            session_boosted=True if is_boosted else None
+                            session_boosted=True if is_session_boosted else None,
+                            long_term_boosted=True if is_lt_boosted else None,
                         )
                     )
-                
+
                 latency_ms = (time.time() - start_time) * 1000
                 log_request(
                     logger,
@@ -370,7 +403,7 @@ async def get_recommendations(
                     {"user_id": str(user_id), "product_id": str(product_id), "k": k},
                     latency_ms
                 )
-                
+
                 # Log structured recommendation event for monitoring
                 log_recommendation(
                     logger=logger,
@@ -381,13 +414,14 @@ async def get_recommendations(
                     recommended_items=final_uuids,
                     latency_ms=latency_ms
                 )
-                
+
                 return RecommendationResponse(
                     recommendations=recommendations,
                     strategy_used=strategy_used,
                     total_candidates=len(catalog_uuids),
                     total_returned=len(recommendations),
-                    session_reranking=session_meta
+                    session_reranking=session_meta,
+                    long_term_personalization=lt_meta,
                 )
             else:
                 # Normal flow: (strategy, retailrocket_ids)
@@ -559,7 +593,33 @@ async def get_recommendations(
         
         # Step 7: Top-K Selection
         final_products_with_scores = filtered_products_with_scores[:k]
-        
+
+        # Step 7.5: Long-Term Personalization (before session reranking)
+        lt_meta = None
+        if user_id and settings.long_term_personalization_enabled:
+            try:
+                pref_loader = get_user_preference_loader()
+                preferences = await pref_loader.get_preferences(str(user_id))
+                if not preferences.is_empty():
+                    lt_candidates, lt_scores, lt_meta = apply_long_term_boost(
+                        candidates=[pid for pid, _ in final_products_with_scores],
+                        scores=[score for _, score in final_products_with_scores],
+                        product_metadata=product_metadata,
+                        preferences=preferences,
+                    )
+                    final_products_with_scores = list(zip(lt_candidates, lt_scores))
+                    logger.info(
+                        "Long-term personalization applied | user=%s | boosted=%s | source=%s",
+                        user_id,
+                        lt_meta.get('items_boosted', 0),
+                        lt_meta.get('preferences_source', 'none'),
+                    )
+            except Exception:
+                logger.exception(
+                    "Long-term personalization failed | user_id=%s",
+                    user_id,
+                )
+
         # Step 8: Apply Session Re-Ranking (if Redis enabled)
         session_meta = None
         if user_id and settings.redis_enabled:
@@ -581,17 +641,24 @@ async def get_recommendations(
                     user_id,
                     len(final_products_with_scores),
                 )
-        
+
+        # Build boost maps for response metadata
+        session_boost_map = session_meta.get('boost_map', {}) if session_meta else {}
+        lt_boost_map = lt_meta.get('boost_map', {}) if lt_meta else {}
+
         # Build response with real LightGBM scores and product metadata
-        boost_map = session_meta.get('boost_map', {}) if session_meta else {}
         recommendations = []
         for rank, (pid, score) in enumerate(final_products_with_scores):
-            boost_info = boost_map.get(pid) or boost_map.get(str(pid)) or {}
-            is_boosted = boost_info.get('is_boosted', False) or (boost_info.get('boost', 0.0) > 0)
-            reasons = boost_info.get('reasons', [])
-            
-            if is_boosted:
+            s_info = session_boost_map.get(pid) or session_boost_map.get(str(pid)) or {}
+            lt_info = lt_boost_map.get(pid) or lt_boost_map.get(str(pid)) or {}
+            is_session_boosted = s_info.get('is_boosted', False) or (s_info.get('boost', 0.0) > 0)
+            is_lt_boosted = lt_info.get('is_boosted', False)
+            reasons = s_info.get('reasons', [])
+
+            if is_session_boosted:
                 reason = f"Boosted by session intent ({', '.join(reasons)})"
+            elif is_lt_boosted:
+                reason = f"Boosted by long-term preference ({lt_info.get('reason', '')})"
             elif include_metadata:
                 reason = f"Recommended via {strategy_used}"
             else:
@@ -609,10 +676,11 @@ async def get_recommendations(
                     image_url=product_metadata.get(pid, {}).get('image_url'),
                     reason=reason,
                     confidence=0.85 if include_metadata else None,
-                    session_boosted=True if is_boosted else None
+                    session_boosted=True if is_session_boosted else None,
+                    long_term_boosted=True if is_lt_boosted else None,
                 )
             )
-        
+
         latency_ms = (time.time() - start_time) * 1000
         log_request(
             logger,
@@ -620,7 +688,7 @@ async def get_recommendations(
             {"user_id": str(user_id), "product_id": str(product_id), "k": k},
             latency_ms
         )
-        
+
         # Log structured recommendation event for monitoring
         log_recommendation(
             logger=logger,
@@ -631,13 +699,14 @@ async def get_recommendations(
             recommended_items=[pid for pid, _ in final_products_with_scores],
             latency_ms=latency_ms
         )
-        
+
         return RecommendationResponse(
             recommendations=recommendations,
             strategy_used=strategy_used,
             total_candidates=len(retailrocket_ids),
             total_returned=len(recommendations),
-            session_reranking=session_meta
+            session_reranking=session_meta,
+            long_term_personalization=lt_meta,
         )
     
     except HTTPException:
