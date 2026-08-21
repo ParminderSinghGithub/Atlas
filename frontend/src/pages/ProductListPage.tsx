@@ -82,8 +82,11 @@ export const ProductListPage: React.FC = () => {
     setPrevCursors([]);
     
     // Track category view for session re-ranking
-    if (userId && categoryId) {
-      sessionService.trackCategoryView(userId, categoryId);
+    if (categoryId) {
+      const activeSessionId = sessionService.getSessionId(userId);
+      const catObj = categories.find(c => c.id === categoryId);
+      const slugOrName = catObj?.slug || catObj?.name?.toLowerCase().replace(/\s+/g, '-') || categoryId;
+      sessionService.trackCategoryView(activeSessionId, String(slugOrName));
     }
   };
 

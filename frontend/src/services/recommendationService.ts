@@ -7,8 +7,11 @@ export interface Recommendation {
   name?: string;
   price?: number | string;  // Backend returns as string
   category_name?: string;
+  category_slug?: string;
   image_url?: string;
   thumbnail_url?: string;
+  reason?: string;
+  session_boosted?: boolean;
 }
 
 export interface RecommendationResponse {
@@ -16,6 +19,13 @@ export interface RecommendationResponse {
   strategy_used: string;
   total_candidates: number;
   total_returned: number;
+  session_reranking?: {
+    session_reranking_applied?: boolean;
+    categories_matched?: string[];
+    products_referenced?: number;
+    items_boosted?: number;
+    max_boost_applied?: number;
+  } | null;
 }
 
 class RecommendationService {

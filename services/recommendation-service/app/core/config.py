@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     popularity_fallback_size: int = 20  # Popular items for cold start
     
     # Feature Flags
-    enable_svd: bool = True
+    enable_svd: bool = False  # Explicitly disabled in active production path for M4
     enable_item_similarity: bool = True
     enable_lightgbm_ranking: bool = True
     render_deployment_mode: bool = False

@@ -21,32 +21,9 @@ function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <HomePage />
-                  </ProtectedRoute>
-                }
-              />
-              
-              <Route
-                path="/products"
-                element={
-                  <ProtectedRoute>
-                    <ProductListPage />
-                  </ProtectedRoute>
-                }
-              />
-              
-              <Route
-                path="/products/:id"
-                element={
-                  <ProtectedRoute>
-                    <ProductDetailPage />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/" element={<HomePage />} />
+              <Route path="/products" element={<ProductListPage />} />
+              <Route path="/products/:id" element={<ProductDetailPage />} />
               
               <Route
                 path="/cart"

@@ -763,6 +763,71 @@ class TestSessionRerankingAndGuestSupport(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reranked_cand, candidates)
         self.assertEqual(reranked_scores, scores)
 
+    async def test_deterministic_ordering_shift_after_product_event(self):
+        """Product view for a specific item boosts related items in the same category above baseline."""
+        from app.session.reranker import SessionReranker
+        import json
+
+        viewed_prod_uuid = uuid4()
+        related_item_uuid = uuid4()
+        unrelated_item_uuid = uuid4()
+
+        mock_redis = AsyncMock()
+        session_data = {
+            "categories_viewed": [],
+            "products_viewed": [str(viewed_prod_uuid)],
+            "last_updated": time.time()
+        }
+        mock_redis.get = AsyncMock(return_value=json.dumps(session_data))
+
+        reranker = SessionReranker(redis_client=mock_redis)
+
+        # Baseline: unrelated item is rank 1 (0.85), related item is rank 2 (0.70)
+        candidates = [unrelated_item_uuid, related_item_uuid]
+        scores = [0.85, 0.70]
+
+        product_metadata = {
+            viewed_prod_uuid: {"name": "Gaming Laptop", "category_name": "Computers", "category_id": "cat-comp-1"},
+            related_item_uuid: {"name": "Wireless Mouse", "category_name": "Computers", "category_id": "cat-comp-1"},
+            unrelated_item_uuid: {"name": "Garden Hose", "category_name": "Gardening", "category_id": "cat-gard-2"},
+        }
+
+        reranked_cand, reranked_scores, meta = await reranker.apply_session_boost(
+            user_id="user_test_session",
+            candidates=candidates,
+            scores=scores,
+            product_metadata=product_metadata
+        )
+
+        # Assert ranking changed deterministically: related item received +0.3 boost (0.70 + 0.30 = 1.00 > 0.85)
+        self.assertTrue(meta["session_reranking_applied"])
+        self.assertEqual(reranked_cand[0], related_item_uuid)
+        self.assertEqual(reranked_cand[1], unrelated_item_uuid)
+        self.assertNotEqual(reranked_cand, candidates)
+
+    async def test_svd_disabled_in_active_path(self):
+        """Verify SVD is disabled by default in active production path."""
+        from app.core.config import settings
+        from app.api.routes import generate_candidates
+
+        self.assertFalse(settings.enable_svd)
+
+        # Candidate generation with user_id goes directly to popularity baseline without calling SVD
+        mock_pop = MagicMock()
+        mock_pop.is_available.return_value = True
+        mock_pop.get_top_k.return_value = [(101, 0.99), (102, 0.98)]
+
+        mock_mapper = AsyncMock()
+        mock_mapper.get_valid_latent_ids = AsyncMock(return_value=[101, 102])
+
+        with patch("app.api.routes.get_popularity_model", return_value=mock_pop), \
+             patch("app.api.routes.get_latent_mapper", return_value=mock_mapper):
+
+            strategy, items = await generate_candidates(user_id="any-user-uuid", product_id=None, k=8)
+
+        self.assertEqual(strategy, "popularity")
+        self.assertEqual(len(items), 2)
+
 
 def run_tests():
     """Run test suite."""

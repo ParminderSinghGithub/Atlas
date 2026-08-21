@@ -13,6 +13,7 @@ export const HomePage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(0);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [strategyUsed, setStrategyUsed] = useState<string>('');
+  const [sessionReranking, setSessionReranking] = useState<any>(null);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadingRecs, setLoadingRecs] = useState(true);
   
@@ -53,7 +54,8 @@ export const HomePage: React.FC = () => {
       );
       setRecommendations(response.recommendations);
       setStrategyUsed(response.strategy_used);
-      console.log(`[HOME] Recommendation strategy: ${response.strategy_used}`);
+      setSessionReranking(response.session_reranking || null);
+      console.log(`[HOME] Recommendation strategy: ${response.strategy_used}, session_reranking:`, response.session_reranking);
     } catch (error) {
       console.error('Failed to load recommendations:', error);
     } finally {
@@ -84,9 +86,19 @@ export const HomePage: React.FC = () => {
           </div>
         ) : (
           <>
-            {/* Removed redundant "Recommended For You" heading - keeping only strategy badge */}
-            <div className="flex items-center justify-end mb-4">
-              <div className="flex items-center gap-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              {sessionReranking?.session_reranking_applied && sessionReranking?.items_boosted > 0 ? (
+                <div className="flex items-center gap-1.5 text-xs text-purple-700 bg-purple-100 px-3 py-1 rounded-full font-medium shadow-sm">
+                  <span>✨</span>
+                  <span>Personalized for your session intent</span>
+                  {sessionReranking.categories_matched?.length > 0 && (
+                    <span className="text-purple-600 font-normal">({sessionReranking.categories_matched.join(', ')})</span>
+                  )}
+                </div>
+              ) : (
+                <div />
+              )}
+              <div className="flex items-center gap-2 text-sm ml-auto">
                 <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">
                   {strategyUsed.replace(/_/g, ' ').toUpperCase()}
                 </span>
