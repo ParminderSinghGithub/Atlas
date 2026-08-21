@@ -20,18 +20,20 @@ export interface RecommendationResponse {
 
 class RecommendationService {
   async getRecommendationsForUser(
-    userId: string,
+    userId?: string | null,
     k: number = 10
   ): Promise<RecommendationResponse> {
     try {
-      const response = await api.get('/v1/recommendations', {
-        params: { user_id: userId, k },
-      });
+      const params: Record<string, any> = { k };
+      if (userId) {
+        params.user_id = userId;
+      }
+      const response = await api.get('/v1/recommendations', { params });
       
-      console.log(`[RECS] User ${userId} recommendations:`, response.data);
+      console.log(`[RECS] User ${userId || 'guest'} recommendations:`, response.data);
       return response.data;
     } catch (error) {
-      console.error('[RECS] Failed to fetch user recommendations:', error);
+      console.error('[RECS] Failed to fetch recommendations:', error);
       return {
         recommendations: [],
         strategy_used: 'error',

@@ -20,9 +20,22 @@ interface SessionTrackResponse {
 
 class SessionService {
   /**
+   * Resolve active session identifier (authenticated userId or anonymous guest session ID).
+   */
+  getSessionId(userId?: string | null): string {
+    if (userId) return userId;
+    let guestId = localStorage.getItem('atlas_guest_session_id');
+    if (!guestId) {
+      guestId = `guest_${Math.random().toString(36).substring(2, 10)}${Date.now().toString(36)}`;
+      localStorage.setItem('atlas_guest_session_id', guestId);
+    }
+    return guestId;
+  }
+
+  /**
    * Track category view for session-aware re-ranking.
    * 
-   * @param userId User identifier
+   * @param userId User identifier (authenticated UUID or guest session ID)
    * @param categorySlug Category slug or ID
    */
   async trackCategoryView(userId: string, categorySlug: string): Promise<void> {

@@ -5,6 +5,7 @@ import { catalogService } from '../services/catalogService';
 import type { Product } from '../services/catalogService';
 import { recommendationService } from '../services/recommendationService';
 import type { Recommendation } from '../services/recommendationService';
+import { sessionService } from '../services/sessionService';
 
 export const HomePage: React.FC = () => {
   const { userId } = useAuth();
@@ -21,9 +22,7 @@ export const HomePage: React.FC = () => {
 
   useEffect(() => {
     loadProducts();
-    if (userId) {
-      loadRecommendations();
-    }
+    loadRecommendations();
   }, [userId]);
 
   const loadProducts = async () => {
@@ -45,11 +44,11 @@ export const HomePage: React.FC = () => {
   };
 
   const loadRecommendations = async () => {
-    if (!userId) return;
-    
+    setLoadingRecs(true);
     try {
+      const activeSessionId = sessionService.getSessionId(userId);
       const response = await recommendationService.getRecommendationsForUser(
-        userId,
+        activeSessionId,
         8
       );
       setRecommendations(response.recommendations);

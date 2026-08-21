@@ -21,6 +21,7 @@ import sys
 import os
 from pathlib import Path
 import asyncio
+import time
 import unittest
 from unittest.mock import patch, AsyncMock, MagicMock
 from uuid import uuid4
@@ -621,6 +622,148 @@ class TestReverseLatentMapping(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await mapper.get_latent_id_for_product(None))
 
 
+class TestSessionRerankingAndGuestSupport(unittest.IsolatedAsyncioTestCase):
+    """Test session tracking, session-aware re-ranking, and guest user recommendation flows."""
+
+    async def test_guest_recommendation_request_without_params(self):
+        """Guest visits homepage without user_id or product_id; returns popularity baseline."""
+        from app.api.routes import get_recommendations
+        from uuid import uuid4
+
+        rec_uuid1 = uuid4()
+        rec_uuid2 = uuid4()
+
+        mock_mapper = AsyncMock()
+        mock_mapper.map_to_catalog = AsyncMock(return_value=[(rec_uuid1, 101), (rec_uuid2, 102)])
+        mock_mapper.get_valid_latent_ids = AsyncMock(return_value=[101, 102])
+
+        mock_metadata = {
+            rec_uuid1: {"name": "Popular Item 1", "price": 10.0, "category_name": "General"},
+            rec_uuid2: {"name": "Popular Item 2", "price": 20.0, "category_name": "General"},
+        }
+
+        local_candidates = ("popularity", [(101, 0.9), (102, 0.8)])
+
+        with patch("app.api.routes.get_latent_mapper", return_value=mock_mapper), \
+             patch("app.api.routes.generate_candidates", AsyncMock(return_value=local_candidates)), \
+             patch("app.api.routes.fetch_product_metadata", AsyncMock(return_value=mock_metadata)), \
+             patch("app.api.routes.apply_all_rules", AsyncMock(return_value=[rec_uuid1, rec_uuid2])):
+
+            response = await get_recommendations(user_id=None, product_id=None, k=8)
+
+        self.assertEqual(len(response.recommendations), 2)
+        self.assertTrue("popularity" in response.strategy_used)
+        self.assertEqual(response.total_returned, 2)
+
+    async def test_session_event_tracking_category_view(self):
+        """Test tracking a category_view event writes to session reranker."""
+        from app.api.routes import track_session_event
+        from app.api.schemas import SessionTrackRequest
+
+        mock_reranker = AsyncMock()
+        mock_reranker.enabled = True
+        mock_reranker.track_category_view = AsyncMock()
+
+        with patch("app.api.routes.get_session_reranker", AsyncMock(return_value=mock_reranker)):
+            req = SessionTrackRequest(
+                user_id="0b483e1c-192f-48e1-ad2d-6177fb888a88",
+                event_type="category_view",
+                category_slug="electronics"
+            )
+            resp = await track_session_event(req)
+
+        self.assertTrue(resp.success)
+        mock_reranker.track_category_view.assert_called_once_with(
+            "0b483e1c-192f-48e1-ad2d-6177fb888a88", "electronics"
+        )
+
+    async def test_session_event_tracking_guest_product_view(self):
+        """Test tracking a product_view for an anonymous guest session ID."""
+        from app.api.routes import track_session_event
+        from app.api.schemas import SessionTrackRequest
+        from uuid import uuid4
+
+        prod_uuid = uuid4()
+        mock_reranker = AsyncMock()
+        mock_reranker.enabled = True
+        mock_reranker.track_product_view = AsyncMock()
+
+        with patch("app.api.routes.get_session_reranker", AsyncMock(return_value=mock_reranker)):
+            req = SessionTrackRequest(
+                user_id="guest_abc123-session",
+                event_type="product_view",
+                product_id=prod_uuid
+            )
+            resp = await track_session_event(req)
+
+        self.assertTrue(resp.success)
+        mock_reranker.track_product_view.assert_called_once_with(
+            "guest_abc123-session", prod_uuid
+        )
+
+    async def test_session_reranker_boosts_matching_category(self):
+        """Session signals for 'electronics' boost electronics products higher in ranking."""
+        from app.session.reranker import SessionReranker
+        import json
+
+        mock_redis = AsyncMock()
+        session_data = {
+            "categories_viewed": ["electronics"],
+            "products_viewed": [],
+            "last_updated": time.time()
+        }
+        mock_redis.get = AsyncMock(return_value=json.dumps(session_data))
+
+        reranker = SessionReranker(redis_client=mock_redis)
+
+        item_book = uuid4()
+        item_elec = uuid4()
+
+        # Book starts at rank 1 with score 0.8, Elec starts at rank 2 with score 0.75
+        candidates = [item_book, item_elec]
+        scores = [0.8, 0.75]
+
+        product_metadata = {
+            item_book: {"name": "Novel", "category_name": "Books", "category_slug": "books"},
+            item_elec: {"name": "Headphones", "category_name": "Electronics", "category_slug": "electronics"}
+        }
+
+        reranked_cand, reranked_scores, meta = await reranker.apply_session_boost(
+            user_id="user_123",
+            candidates=candidates,
+            scores=scores,
+            product_metadata=product_metadata
+        )
+
+        self.assertTrue(meta["session_reranking_applied"])
+        self.assertEqual(meta["items_boosted"], 1)
+        # Electronics item was boosted (0.75 + 0.2 = 0.95 > 0.8) and is now first!
+        self.assertEqual(reranked_cand[0], item_elec)
+        self.assertEqual(reranked_cand[1], item_book)
+
+    async def test_session_reranking_redis_unavailable_fallback(self):
+        """When Redis is unavailable or fails, reranker falls back to original ranking without errors."""
+        from app.session.reranker import SessionReranker
+
+        reranker = SessionReranker(redis_client=None)
+
+        item1 = uuid4()
+        item2 = uuid4()
+        candidates = [item1, item2]
+        scores = [0.9, 0.8]
+
+        reranked_cand, reranked_scores, meta = await reranker.apply_session_boost(
+            user_id="user_123",
+            candidates=candidates,
+            scores=scores,
+            product_metadata={}
+        )
+
+        self.assertFalse(meta["session_reranking_applied"])
+        self.assertEqual(reranked_cand, candidates)
+        self.assertEqual(reranked_scores, scores)
+
+
 def run_tests():
     """Run test suite."""
     loader = unittest.TestLoader()
@@ -629,6 +772,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestMLInferenceClient))
     suite.addTests(loader.loadTestsFromTestCase(TestRecommendationRouteWithExternalML))
     suite.addTests(loader.loadTestsFromTestCase(TestReverseLatentMapping))
+    suite.addTests(loader.loadTestsFromTestCase(TestSessionRerankingAndGuestSupport))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

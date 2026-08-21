@@ -40,9 +40,14 @@ export const ProductDetailPage: React.FC = () => {
       const productData = await catalogService.getProduct(id);
       setProduct(productData);
 
-      // Track category view for session re-ranking (if category exists)
-      if (userId && productData.category_id) {
-        sessionService.trackCategoryView(userId, productData.category_id);
+      // Track category and product view for session re-ranking
+      const activeSessionId = sessionService.getSessionId(userId);
+      const categorySlug = (productData as any).category_slug || (productData as any).category?.slug || (productData as any).category_name || (productData as any).category_id;
+      if (categorySlug) {
+        sessionService.trackCategoryView(activeSessionId, String(categorySlug));
+      }
+      if (id) {
+        sessionService.trackProductView(activeSessionId, id);
       }
 
       // Load similar products

@@ -200,15 +200,11 @@ async def get_recommendations(
     clean_user_id = str(user_id) if isinstance(user_id, (str, int)) and not hasattr(user_id, "default") else None
     clean_product_id = product_id if isinstance(product_id, (str, int, UUID)) and not hasattr(product_id, "default") else None
 
-    # Validation: At least one of user_id or product_id required
-    if clean_user_id is None and clean_product_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="At least one of user_id or product_id must be provided"
-        )
-    
     user_id = clean_user_id
     product_id = clean_product_id
+    
+    if user_id is None and product_id is None:
+        logger.info("Guest recommendation request received (no user_id or product_id) | using popularity baseline")
     
     try:
         logger.info("Resolved catalog metadata base URL: %s", get_catalog_service_url())
@@ -312,22 +308,45 @@ async def get_recommendations(
                     )
                 
                 # Skip feature assembly, ranking, and mapping - go straight to metadata
-                product_metadata = await fetch_product_metadata(catalog_uuids[:k])
+                product_metadata = await fetch_product_metadata(catalog_uuids)
                 
-                # Build recommendations with mock scores
+                # Apply decisioning rules
+                valid_uuids = await apply_all_rules(catalog_uuids, product_metadata)
+                final_uuids = valid_uuids[:k]
+                final_scores = [1.0 - (rank * 0.05) for rank in range(len(final_uuids))]
+                
+                # Apply Session Re-Ranking if user_id/session is provided
+                session_meta = None
+                if user_id and settings.redis_enabled:
+                    try:
+                        reranker = await get_session_reranker(settings.redis_url)
+                        if reranker.enabled:
+                            reranked_candidates, reranked_scores, session_meta = await reranker.apply_session_boost(
+                                user_id=str(user_id),
+                                candidates=final_uuids,
+                                scores=final_scores,
+                                product_metadata=product_metadata
+                            )
+                            final_uuids = reranked_candidates
+                            final_scores = reranked_scores
+                    except Exception:
+                        logger.exception("Session re-ranking failed in category similarity path | user_id=%s", user_id)
+                
+                # Build recommendations
                 recommendations = [
                     RecommendedProduct(
                         product_id=pid,
-                        score=1.0 - (rank * 0.1),  # Descending scores
+                        score=score,
                         rank=rank + 1,
                         name=product_metadata.get(pid, {}).get('name'),
                         price=product_metadata.get(pid, {}).get('price'),
                         category_name=product_metadata.get(pid, {}).get('category_name'),
+                        category_slug=product_metadata.get(pid, {}).get('category_slug'),
                         image_url=product_metadata.get(pid, {}).get('image_url'),
                         reason=f"Recommended via {strategy_used}" if include_metadata else None,
                         confidence=1.0 if include_metadata else None
                     )
-                    for rank, pid in enumerate(catalog_uuids[:k])
+                    for rank, (pid, score) in enumerate(zip(final_uuids, final_scores))
                 ]
                 
                 latency_ms = (time.time() - start_time) * 1000
@@ -345,7 +364,7 @@ async def get_recommendations(
                     product_id=product_id,
                     strategy_used=strategy_used,
                     model_version=getattr(settings, 'model_version', 'unknown'),
-                    recommended_items=catalog_uuids[:k],
+                    recommended_items=final_uuids,
                     latency_ms=latency_ms
                 )
                 
@@ -353,7 +372,8 @@ async def get_recommendations(
                     recommendations=recommendations,
                     strategy_used=strategy_used,
                     total_candidates=len(catalog_uuids),
-                    total_returned=len(recommendations)
+                    total_returned=len(recommendations),
+                    session_reranking=session_meta
                 )
             else:
                 # Normal flow: (strategy, retailrocket_ids)
@@ -527,6 +547,7 @@ async def get_recommendations(
         final_products_with_scores = filtered_products_with_scores[:k]
         
         # Step 8: Apply Session Re-Ranking (if Redis enabled)
+        session_meta = None
         if user_id and settings.redis_enabled:
             try:
                 reranker = await get_session_reranker(settings.redis_url)
@@ -587,7 +608,8 @@ async def get_recommendations(
             recommendations=recommendations,
             strategy_used=strategy_used,
             total_candidates=len(retailrocket_ids),
-            total_returned=len(recommendations)
+            total_returned=len(recommendations),
+            session_reranking=session_meta
         )
     
     except HTTPException:

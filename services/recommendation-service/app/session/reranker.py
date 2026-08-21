@@ -109,7 +109,7 @@ class SessionReranker:
             
             # Test connection
             await redis_client.ping()
-            logger.info("✓ Connected to Redis for session tracking")
+            logger.info("[OK] Connected to Redis for session tracking")
             
             return cls(redis_client=redis_client)
         
@@ -374,7 +374,7 @@ class SessionReranker:
             'max_boost_applied': max((m['boost'] for m in boost_metadata), default=0)
         }
         
-        logger.info(f"  ✓ Re-ranking complete: {boost_stats['items_boosted']} items boosted")
+        logger.info(f"  [OK] Re-ranking complete: {boost_stats['items_boosted']} items boosted")
         
         return reranked_candidates, reranked_scores, boost_stats
     
