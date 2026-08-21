@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 interface StructuredDescriptionProps {
   description: string;
@@ -135,13 +135,13 @@ export const StructuredDescription: React.FC<StructuredDescriptionProps> = ({ de
       
       if (sectionContent) {
         // Split content by newlines and also detect subsections that might be on same line
-        let contentLines = sectionContent.split('\n').map(l => l.trim()).filter(l => l);
+        const contentLines = sectionContent.split('\n').map(l => l.trim()).filter(l => l);
         
         // Further split lines that have multiple subsections (pattern: "Label1: content Label2: content")
         const expandedLines: string[] = [];
         for (const line of contentLines) {
           // Find all subsection patterns in the line
-          const subsectionPattern = /([A-Za-z0-9\s\-\/]{3,40}):\s*([^:]{1,100}?)(?=\s+[A-Z][A-Za-z0-9\s\-\/]{2,40}:|$)/g;
+          const subsectionPattern = /([A-Za-z0-9\s\-/]{3,40}):\s*([^:]{1,100}?)(?=\s+[A-Z][A-Za-z0-9\s\-/]{2,40}:|$)/g;
           const matches = [...line.matchAll(subsectionPattern)];
           
           if (matches.length > 1) {
@@ -175,12 +175,12 @@ export const StructuredDescription: React.FC<StructuredDescriptionProps> = ({ de
     return sections;
   };
 
-  const sections = parseDescription(description);
+  const sections = useMemo(() => parseDescription(description), [description]);
 
   // Render a single line (detect if it's a bullet point, numbered item, or subsection)
   const renderLine = (line: string, index: number) => {
     // Check if line starts with bullet point indicators
-    const bulletPatterns = /^[•\-\*\+]\s+/;
+    const bulletPatterns = /^[•\-*+]\s+/;
     const numberedPattern = /^\d+\.\s+/;
     const isBullet = bulletPatterns.test(line);
     const isNumbered = numberedPattern.test(line);
@@ -205,7 +205,7 @@ export const StructuredDescription: React.FC<StructuredDescriptionProps> = ({ de
 
     // Check if line is a subsection header (word(s) followed by colon)
     // Examples: "Supported OS:", "Hard Disk Space:", "Video:", etc.
-    const subsectionPattern = /^([A-Za-z0-9\s\-\/]+):\s*(.*)$/;
+    const subsectionPattern = /^([A-Za-z0-9\s\-/]+):\s*(.*)$/;
     const subsectionMatch = line.match(subsectionPattern);
     
     if (subsectionMatch) {
@@ -240,10 +240,10 @@ export const StructuredDescription: React.FC<StructuredDescriptionProps> = ({ de
           <div className="text-gray-700 space-y-1">
             {section.content.map((line, lineIndex) => {
               // Check if multiple lines in a row start with bullets or numbers - render as list
-              const isBullet = /^[•\-\*\+]\s+/.test(line);
+              const isBullet = /^[•\-*+]\s+/.test(line);
               const isNumbered = /^\d+\.\s+/.test(line);
               const isListItem = isBullet || isNumbered;
-              const prevIsBullet = lineIndex > 0 && /^[•\-\*\+]\s+/.test(section.content[lineIndex - 1]);
+              const prevIsBullet = lineIndex > 0 && /^[•\-*+]\s+/.test(section.content[lineIndex - 1]);
               const prevIsNumbered = lineIndex > 0 && /^\d+\.\s+/.test(section.content[lineIndex - 1]);
               const prevIsListItem = prevIsBullet || prevIsNumbered;
 
@@ -251,7 +251,7 @@ export const StructuredDescription: React.FC<StructuredDescriptionProps> = ({ de
               if (isListItem && !prevIsListItem) {
                 const listLines = [];
                 let i = lineIndex;
-                while (i < section.content.length && (/^[•\-\*\+]\s+/.test(section.content[i]) || /^\d+\.\s+/.test(section.content[i]))) {
+                while (i < section.content.length && (/^[•\-*+]\s+/.test(section.content[i]) || /^\d+\.\s+/.test(section.content[i]))) {
                   listLines.push(section.content[i]);
                   i++;
                 }
@@ -264,7 +264,7 @@ export const StructuredDescription: React.FC<StructuredDescriptionProps> = ({ de
                   return (
                     <ListTag key={lineIndex} className={listClass}>
                       {listLines.map((listLine, idx) => {
-                        const content = listLine.replace(/^(?:[•\-\*\+]|\d+\.)\s+/, '');
+                        const content = listLine.replace(/^(?:[•\-*+]|\d+\.)\s+/, '');
                         return (
                           <li key={idx} className="ml-2">
                             {content}

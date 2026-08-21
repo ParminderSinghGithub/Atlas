@@ -14,18 +14,20 @@ export interface Recommendation {
   session_boosted?: boolean;
 }
 
+export interface RecommendationSessionReranking {
+  session_reranking_applied?: boolean;
+  categories_matched?: string[];
+  products_referenced?: number;
+  items_boosted?: number;
+  max_boost_applied?: number;
+}
+
 export interface RecommendationResponse {
   recommendations: Recommendation[];
   strategy_used: string;
   total_candidates: number;
   total_returned: number;
-  session_reranking?: {
-    session_reranking_applied?: boolean;
-    categories_matched?: string[];
-    products_referenced?: number;
-    items_boosted?: number;
-    max_boost_applied?: number;
-  } | null;
+  session_reranking?: RecommendationSessionReranking | null;
 }
 
 class RecommendationService {
@@ -34,7 +36,7 @@ class RecommendationService {
     k: number = 10
   ): Promise<RecommendationResponse> {
     try {
-      const params: Record<string, any> = { k };
+      const params: Record<string, string | number> = { k };
       if (userId) {
         params.user_id = userId;
       }

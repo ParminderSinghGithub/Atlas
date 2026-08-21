@@ -16,12 +16,14 @@ export const ProductDetailPage: React.FC = () => {
   const [similarProducts, setSimilarProducts] = useState<Recommendation[]>([]);
   const [strategyUsed, setStrategyUsed] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [loadingSimilar, setLoadingSimilar] = useState(true);
   const [addingToCart, setAddingToCart] = useState(false);
   const [showToast, setShowToast] = useState(false);
 
   useEffect(() => {
     if (id) {
       loadProduct();
+      loadSimilarProducts();
       // Fire view event only if userId is available
       if (userId) {
         eventService.trackView(userId, id);
@@ -42,23 +44,33 @@ export const ProductDetailPage: React.FC = () => {
 
       // Track category and product view for session re-ranking
       const activeSessionId = sessionService.getSessionId(userId);
-      const categorySlug = (productData as any).category_slug || (productData as any).category?.slug || (productData as any).category_name || (productData as any).category_id;
+      const productMeta = productData as Product & { category_slug?: string; category?: { slug?: string } };
+      const categorySlug = productMeta.category_slug || productMeta.category?.slug || productMeta.category_name || productMeta.category_id;
       if (categorySlug) {
         sessionService.trackCategoryView(activeSessionId, String(categorySlug));
       }
       if (id) {
         sessionService.trackProductView(activeSessionId, id);
       }
+    } catch (error) {
+      console.error('Failed to load product:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      // Load similar products
+  const loadSimilarProducts = async () => {
+    if (!id) return;
+    setLoadingSimilar(true);
+    try {
       const recResponse = await recommendationService.getSimilarProducts(id, 5);
       setSimilarProducts(recResponse.recommendations);
       setStrategyUsed(recResponse.strategy_used);
       console.log(`[DETAIL] Similar products strategy: ${recResponse.strategy_used}`);
     } catch (error) {
-      console.error('Failed to load product:', error);
+      console.error('Failed to load similar products:', error);
     } finally {
-      setLoading(false);
+      setLoadingSimilar(false);
     }
   };
 
@@ -161,7 +173,17 @@ export const ProductDetailPage: React.FC = () => {
       <section className="mb-8">
         <h2 className="text-2xl font-bold mb-4">Similar Products</h2>
         
-        {similarProducts.length === 0 ? (
+        {loadingSimilar ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="border rounded p-4 animate-pulse bg-gray-50 h-56 flex flex-col justify-between">
+                <div className="w-full h-32 bg-gray-200 rounded mb-2" />
+                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                <div className="h-3 bg-gray-200 rounded w-1/2" />
+              </div>
+            ))}
+          </div>
+        ) : similarProducts.length === 0 ? (
           <div className="text-gray-600">
             No similar products available at the moment.
           </div>
@@ -182,6 +204,8 @@ export const ProductDetailPage: React.FC = () => {
                       src={rec.image_url}
                       alt={rec.name || rec.product_id}
                       className="w-full h-32 object-contain mb-2"
+                      loading="lazy"
+                      decoding="async"
                     />
                   )}
                   <div className="text-sm font-semibold mb-2 truncate">

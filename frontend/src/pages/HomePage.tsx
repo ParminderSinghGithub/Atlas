@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { catalogService } from '../services/catalogService';
 import type { Product } from '../services/catalogService';
 import { recommendationService } from '../services/recommendationService';
-import type { Recommendation } from '../services/recommendationService';
+import type { Recommendation, RecommendationSessionReranking } from '../services/recommendationService';
 import { sessionService } from '../services/sessionService';
 
 export const HomePage: React.FC = () => {
@@ -13,7 +13,7 @@ export const HomePage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(0);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [strategyUsed, setStrategyUsed] = useState<string>('');
-  const [sessionReranking, setSessionReranking] = useState<any>(null);
+  const [sessionReranking, setSessionReranking] = useState<RecommendationSessionReranking | null>(null);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadingRecs, setLoadingRecs] = useState(true);
   
@@ -75,8 +75,15 @@ export const HomePage: React.FC = () => {
         </div>
         
         {loadingRecs ? (
-          <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 animate-pulse h-80 flex flex-col justify-between">
+                <div className="h-32 bg-gray-200 rounded mb-3" />
+                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                <div className="h-4 bg-gray-200 rounded w-1/2 mb-3" />
+                <div className="h-6 bg-gray-200 rounded w-1/3 mt-auto" />
+              </div>
+            ))}
           </div>
         ) : recommendations.length === 0 ? (
           <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border-l-4 border-yellow-400 px-6 py-4 rounded-lg">
@@ -87,12 +94,12 @@ export const HomePage: React.FC = () => {
         ) : (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-              {sessionReranking?.session_reranking_applied && sessionReranking?.items_boosted > 0 ? (
+              {sessionReranking?.session_reranking_applied && (sessionReranking.items_boosted ?? 0) > 0 ? (
                 <div className="flex items-center gap-1.5 text-xs text-purple-700 bg-purple-100 px-3 py-1 rounded-full font-medium shadow-sm">
                   <span>✨</span>
                   <span>Personalized for your session intent</span>
-                  {sessionReranking.categories_matched?.length > 0 && (
-                    <span className="text-purple-600 font-normal">({sessionReranking.categories_matched.join(', ')})</span>
+                  {(sessionReranking.categories_matched?.length ?? 0) > 0 && (
+                    <span className="text-purple-600 font-normal">({sessionReranking.categories_matched?.join(', ')})</span>
                   )}
                 </div>
               ) : (
@@ -119,6 +126,8 @@ export const HomePage: React.FC = () => {
                         src={rec.image_url}
                         alt={rec.name || 'Product'}
                         className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
+                        loading="lazy"
+                        decoding="async"
                         onError={(e) => {
                           e.currentTarget.style.display = 'none';
                           e.currentTarget.parentElement!.innerHTML = `
@@ -190,8 +199,15 @@ export const HomePage: React.FC = () => {
         </div>
         
         {loadingProducts ? (
-          <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 animate-pulse h-80 flex flex-col justify-between">
+                <div className="aspect-square bg-gray-200 rounded mb-3" />
+                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+                <div className="h-4 bg-gray-200 rounded w-1/2 mb-2" />
+                <div className="h-6 bg-gray-200 rounded w-1/3 mt-auto" />
+              </div>
+            ))}
           </div>
         ) : (
           <>
@@ -208,6 +224,8 @@ export const HomePage: React.FC = () => {
                         src={product.image_url}
                         alt={product.name}
                         className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                        loading="lazy"
+                        decoding="async"
                       />
                     </div>
                   ) : (

@@ -30,6 +30,9 @@ export interface PaginatedResponse<T> {
 }
 
 class CatalogService {
+  private categoriesCache: Category[] | null = null;
+  private categoriesPromise: Promise<Category[]> | null = null;
+
   async getProducts(params?: {
     cursor?: string;
     limit?: number;
@@ -46,9 +49,25 @@ class CatalogService {
   }
 
   async getCategories(): Promise<Category[]> {
-    const response = await api.get('/v1/catalog/categories');
-    // API returns { categories: [...] }, not just array
-    return response.data.categories || [];
+    if (this.categoriesCache) {
+      return this.categoriesCache;
+    }
+    if (this.categoriesPromise) {
+      return this.categoriesPromise;
+    }
+    this.categoriesPromise = api
+      .get('/v1/catalog/categories')
+      .then((response) => {
+        const categories = response.data.categories || [];
+        this.categoriesCache = categories;
+        this.categoriesPromise = null;
+        return categories;
+      })
+      .catch((error) => {
+        this.categoriesPromise = null;
+        throw error;
+      });
+    return this.categoriesPromise;
   }
 }
 

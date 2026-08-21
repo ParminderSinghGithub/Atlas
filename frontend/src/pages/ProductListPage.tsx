@@ -157,8 +157,15 @@ export const ProductListPage: React.FC = () => {
 
       {/* Product Grid */}
       {loading ? (
-        <div className="flex justify-center items-center py-16">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+          {[...Array(8)].map((_, i) => (
+            <div key={i} className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 animate-pulse h-80 flex flex-col justify-between">
+              <div className="aspect-square bg-gray-200 rounded mb-3" />
+              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+              <div className="h-4 bg-gray-200 rounded w-1/2 mb-2" />
+              <div className="h-6 bg-gray-200 rounded w-1/3 mt-auto" />
+            </div>
+          ))}
         </div>
       ) : filteredProducts.length === 0 ? (
         <div className="text-center py-16">
@@ -191,6 +198,8 @@ export const ProductListPage: React.FC = () => {
                       src={product.image_url}
                       alt={product.name}
                       className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                      decoding="async"
                     />
                   </div>
                 ) : (
