@@ -241,12 +241,33 @@ async def get_recommendations(
 
                 if ext_resp and ext_resp.status == "success" and ext_resp.items:
                     ranked_items = [(item.item_id, item.score) for item in ext_resp.items]
+                    retailrocket_ids = [item_id for item_id, _ in ranked_items]
                     logger.info(
                         "External ML inference succeeded | strategy=%s | count=%d",
                         ext_resp.strategy_used,
                         len(ranked_items)
                     )
-                    external_ml_candidates = (ext_resp.strategy_used, ranked_items)
+                    
+                    # Verify candidate IDs have valid catalog mappings
+                    mapper = get_latent_mapper()
+                    catalog_mapping = await mapper.map_to_catalog(
+                        retailrocket_ids,
+                        confidence_threshold=settings.confidence_threshold,
+                        preserve_ids=True
+                    )
+                    
+                    if catalog_mapping:
+                        logger.info(
+                            "External ML candidates successfully mapped to %d catalog products",
+                            len(catalog_mapping)
+                        )
+                        external_ml_candidates = (ext_resp.strategy_used, ranked_items, catalog_mapping)
+                    else:
+                        logger.warning(
+                            "External ML inference returned %d candidates, but none mapped to catalog products in database. Falling back to local pipeline.",
+                            len(retailrocket_ids)
+                        )
+                        log_fallback(logger, "external_ml_unmapped_candidates", "local_pipeline")
                 else:
                     status_reason = ext_resp.status if ext_resp else "no_response"
                     logger.info(
@@ -259,9 +280,10 @@ async def get_recommendations(
                 log_fallback(logger, "external_ml_exception", "local_pipeline")
 
         if external_ml_candidates is not None:
-            strategy_used, ranked_items_with_scores = external_ml_candidates
+            strategy_used, ranked_items_with_scores, catalog_mapping = external_ml_candidates
             retailrocket_ids = [item_id for item_id, _ in ranked_items_with_scores]
         else:
+            catalog_mapping = None
             # Step 1: Candidate Generation (Local Pipeline)
             candidate_result = await generate_candidates(
                 user_id=user_id,
@@ -456,14 +478,15 @@ async def get_recommendations(
         logger.info(f"Created scores_dict with {len(scores_dict)} entries | Sample: {list(scores_dict.items())[:3]}")
         
         # Step 4: Latent → Catalog Mapping (PRESERVE SCORES)
-        logger.info(f"About to call mapper with {len(retailrocket_ids)} IDs")
-        mapper = get_latent_mapper()
-        catalog_mapping = await mapper.map_to_catalog(
-            retailrocket_ids,
-            confidence_threshold=settings.confidence_threshold,
-            preserve_ids=True  # Returns [(UUID, retailrocket_id), ...]
-        )
-        logger.info(f"Mapper returned {len(catalog_mapping)} catalog mappings")
+        if catalog_mapping is None:
+            logger.info(f"About to call mapper with {len(retailrocket_ids)} IDs")
+            mapper = get_latent_mapper()
+            catalog_mapping = await mapper.map_to_catalog(
+                retailrocket_ids,
+                confidence_threshold=settings.confidence_threshold,
+                preserve_ids=True  # Returns [(UUID, retailrocket_id), ...]
+            )
+            logger.info(f"Mapper returned {len(catalog_mapping)} catalog mappings")
         
         if not catalog_mapping:
             logger.warning(
@@ -493,10 +516,11 @@ async def get_recommendations(
         product_metadata = await fetch_product_metadata(product_ids_only)
         
         # Step 6: Apply Decisioning Rules
+        valid_pids = set(await apply_all_rules(product_ids_only, product_metadata))
         filtered_products_with_scores = [
             (pid, score)
             for pid, score in product_scores
-            if pid in await apply_all_rules([pid], product_metadata)
+            if pid in valid_pids
         ]
         
         # Step 7: Top-K Selection
@@ -607,15 +631,7 @@ async def generate_candidates(
     if product_id is not None:
         logger.info(f"Product-based recommendations requested for {product_id}")
 
-        if settings.disable_similarity_model:
-            logger.warning("Similarity recommender disabled for deployment mode.")
-            logger.info("Skipping item-similarity path and falling back to popularity")
-            popularity_model = get_popularity_model()
-            if not popularity_model.is_available():
-                popularity_model.load()
-            return ("popularity", popularity_model.get_top_k(k))
-        
-        # Try to get product metadata first to extract category
+        # Try to get product metadata first to extract category and use category-based similarity
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 base_url = get_catalog_service_url()
@@ -626,19 +642,19 @@ async def generate_candidates(
                     base_url,
                     product_id,
                 )
-                response = await client.get(
-                    request_url
-                )
+                response = await client.get(request_url)
                 if response.status_code == 200:
                     product_data = response.json()
                     category_id = product_data.get('category', {}).get('id') if isinstance(product_data.get('category'), dict) else None
+                    if not category_id and 'category_id' in product_data:
+                        category_id = product_data['category_id']
                     
                     if category_id:
                         logger.info(f"Product {product_id} belongs to category {category_id}, using category-based recommendations")
                         # Get products from same category as fallback
                         category_request_url = f"{base_url}/api/v1/catalog/products"
                         logger.info(
-                            "Fetching metadata from: %s | base_url=%s | category_id=%s",
+                            "Fetching category products from: %s | base_url=%s | category_id=%s",
                             category_request_url,
                             base_url,
                             category_id,
@@ -657,13 +673,21 @@ async def generate_candidates(
                             
                             if similar_uuids:
                                 logger.info(f"Found {len(similar_uuids)} products in same category")
-                                # Return as if they came from similarity model
-                                # We'll bypass the latent mapping since we already have UUIDs
-                                return ("category_similarity", similar_uuids, True)  # True = already UUIDs
+                                # Return direct UUIDs bypassing latent mapping
+                                return ("category_similarity", similar_uuids, True)
         except Exception as e:
-            logger.exception("Failed to fetch category for product-based recommendation | product_id=%s", product_id)
+            logger.exception("Failed to fetch category for product-based recommendation | product_id=%s: %s", product_id, e)
         
-        # Original similarity model attempt
+        if settings.disable_similarity_model:
+            logger.info("Local similarity model disabled on deployment, falling back to popularity")
+            popularity_model = get_popularity_model()
+            if not popularity_model.is_available():
+                popularity_model.load()
+            mapper = get_latent_mapper()
+            valid_ids = await mapper.get_valid_latent_ids()
+            return ("popularity", popularity_model.get_top_k(k, valid_ids=valid_ids))
+        
+        # Local similarity model attempt
         try:
             if isinstance(product_id, (int, str)) and str(product_id).isdigit():
                 retailrocket_id = int(product_id)

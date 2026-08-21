@@ -508,6 +508,52 @@ class TestRecommendationRouteWithExternalML(unittest.IsolatedAsyncioTestCase):
         self.assertTrue("popularity" in response.strategy_used)
         self.assertEqual(len(response.recommendations), 1)
 
+    async def test_route_external_ml_candidates_unmapped_in_db_falls_back_to_local_pipeline(self):
+        """When external ML returns candidates but none exist in latent_item_mappings, route falls back safely."""
+        from app.api.routes import get_recommendations
+        from uuid import UUID
+
+        catalog_uuid = UUID("0d9d2060-38a5-55ef-9b70-a51baa2947f4")
+        fallback_uuid = uuid4()
+
+        # OCI ML returns 36 candidate items
+        mock_inference_response = InferenceResponse(
+            status="success",
+            items=[InferredItem(item_id=i, score=0.9 - i * 0.01) for i in range(1001, 1037)],
+            strategy_used="two_stage_item_sim_lgbm",
+            model_version="production_v1"
+        )
+
+        mock_client = AsyncMock()
+        mock_client.infer = AsyncMock(return_value=mock_inference_response)
+
+        mock_mapper = AsyncMock()
+        mock_mapper.get_latent_id_for_product = AsyncMock(return_value=445351)
+        # Database has NO mappings for these 36 candidates
+        mock_mapper.map_to_catalog = AsyncMock(return_value=[])
+
+        # Local pipeline fallback returns category similarity
+        local_candidates = ("category_similarity", [fallback_uuid], True)
+
+        mock_metadata = {
+            fallback_uuid: {"name": "Category Fallback Product", "price": 24.99, "category_name": "Electronics"}
+        }
+
+        with patch("app.api.routes.settings.ml_inference_enabled", True), \
+             patch("app.api.routes.settings.ml_inference_url", "http://mock-ml:8001"), \
+             patch("app.api.routes.get_inference_client", return_value=mock_client), \
+             patch("app.api.routes.get_latent_mapper", return_value=mock_mapper), \
+             patch("app.api.routes.generate_candidates", AsyncMock(return_value=local_candidates)), \
+             patch("app.api.routes.fetch_product_metadata", AsyncMock(return_value=mock_metadata)), \
+             patch("app.api.routes.apply_all_rules", AsyncMock(return_value=[fallback_uuid])):
+
+            response = await get_recommendations(product_id=catalog_uuid, k=8)
+
+        # Verified it did NOT return empty recommendations with two_stage_item_sim_lgbm
+        self.assertEqual(response.strategy_used, "category_similarity")
+        self.assertEqual(len(response.recommendations), 1)
+        self.assertEqual(response.recommendations[0].product_id, fallback_uuid)
+
 
 class TestReverseLatentMapping(unittest.IsolatedAsyncioTestCase):
     """Test LatentMapper reverse lookup method."""
