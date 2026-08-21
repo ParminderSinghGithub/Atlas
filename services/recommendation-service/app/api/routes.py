@@ -579,15 +579,17 @@ async def get_recommendations(
         
         logger.debug(f"Mapped to {len(product_scores)} catalog products with preserved scores")
         
-        # Step 5: Fetch Product Metadata
-        product_ids_only = [pid for pid, _ in product_scores]
+        # Step 5: Fetch Product Metadata (bound hydration to top candidates needed for top-k)
+        candidate_hydration_limit = min(len(product_scores), max(k * 3, 20))
+        candidate_scores_to_hydrate = product_scores[:candidate_hydration_limit]
+        product_ids_only = [pid for pid, _ in candidate_scores_to_hydrate]
         product_metadata = await fetch_product_metadata(product_ids_only)
         
         # Step 6: Apply Decisioning Rules
         valid_pids = set(await apply_all_rules(product_ids_only, product_metadata))
         filtered_products_with_scores = [
             (pid, score)
-            for pid, score in product_scores
+            for pid, score in candidate_scores_to_hydrate
             if pid in valid_pids
         ]
         

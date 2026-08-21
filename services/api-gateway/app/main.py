@@ -93,7 +93,7 @@ async def proxy_catalog(path: str, request: Request):
 @app.api_route("/api/v1/recommendations", methods=["GET", "OPTIONS"])
 async def proxy_recommendations(request: Request):
     """Proxy /api/v1/recommendations to recommendation-service"""
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         base_url = get_recommendation_service_url()
         url = f"{base_url}/api/v1/recommendations"
         headers = dict(request.headers)
