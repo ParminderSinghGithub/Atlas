@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     USER_SERVICE_URL: str = "http://user-service:5000"
     CATALOG_SERVICE_URL: str = "http://catalog-service:5004"
     RECOMMENDATION_SERVICE_URL: str = "http://recommendation-service:5005"
+    RECOMMENDATION_TIMEOUT_SECONDS: float = 30.0
 
     class Config:
         env_file = ".env"

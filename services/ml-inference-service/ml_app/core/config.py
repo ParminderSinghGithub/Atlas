@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     candidate_pool_size: int = 100
     max_candidates: int = 500
 
+    # Model serving controls (SVD online serving disabled in production path)
+    enable_svd_serving: bool = False
+
     class Config:
         env_file = ".env"
         case_sensitive = False

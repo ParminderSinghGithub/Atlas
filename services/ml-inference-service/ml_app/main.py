@@ -44,10 +44,14 @@ async def lifespan(app: FastAPI):
     logger.info("STARTING ATLAS EXTERNAL ML INFERENCE SERVICE")
     logger.info("=" * 70)
 
-    # 1. Load SVD Model
-    logger.info("[1/4] Loading SVD Model...")
-    svd = get_svd_model()
-    svd_loaded = svd.load()
+    # 1. SVD Model Serving (Disabled in production path)
+    if settings.enable_svd_serving:
+        logger.info("[1/4] Loading SVD Model...")
+        svd = get_svd_model()
+        svd_loaded = svd.load()
+    else:
+        logger.info("[1/4] SVD Model serving disabled in production path (skipping artifact load)")
+        svd_loaded = False
 
     # 2. Load Item-Item Similarity Model
     logger.info("[2/4] Loading Item Similarity Matrix...")
@@ -222,8 +226,17 @@ async def infer(request: InferenceRequest):
         except (ValueError, TypeError):
             logger.warning("Invalid item_id for similarity: %s", request.item_id)
 
-    # Case 3: User personalization via SVD collaborative filtering
+    # Case 3: User personalization via SVD collaborative filtering (disabled in production path)
     elif request.user_id:
+        if not settings.enable_svd_serving:
+            elapsed_ms = (time.time() - start_time) * 1000
+            return InferenceResponse(
+                status="cold_start",
+                items=[],
+                strategy_used="svd_disabled",
+                model_version=model_version,
+                execution_time_ms=round(elapsed_ms, 2)
+            )
         svd_model = get_svd_model()
         svd_candidates = svd_model.get_candidates(str(request.user_id), k=k)
         if svd_candidates:

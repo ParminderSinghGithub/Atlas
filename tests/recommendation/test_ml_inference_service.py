@@ -136,6 +136,7 @@ class TestRecommendationEndToEndWithMLService(unittest.IsolatedAsyncioTestCase):
 
         with patch("app.api.routes.settings.ml_inference_enabled", True), \
              patch("app.api.routes.settings.ml_inference_url", "http://ml-service:8001"), \
+             patch.object(ml_main_module.settings, "enable_svd_serving", True), \
              patch.object(ml_main_module, "get_svd_model", return_value=mock_svd), \
              patch("httpx.AsyncClient", return_value=mock_http_client), \
              patch("app.api.routes.get_latent_mapper", return_value=mock_mapper), \
