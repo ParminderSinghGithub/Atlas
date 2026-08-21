@@ -298,16 +298,15 @@ class SessionReranker:
             metadata = product_metadata.get(candidate, {})
             category_id = metadata.get('category_id')
             category_name = metadata.get('category_name', '')
+            category_slug = metadata.get('category_slug', '')
             
-            # Category boost - match by ID or name/slug
-            # Session tracks category_slug, but we match by name or ID
+            # Category boost - match by slug, ID, or name
             category_match = False
-            if category_id:
-                # Check if category ID string is in viewed categories
-                if str(category_id) in signals.categories_viewed:
-                    category_match = True
-            if category_name:
-                # Check if category name matches (case-insensitive)
+            if category_slug and category_slug in signals.categories_viewed:
+                category_match = True
+            elif category_id and str(category_id) in signals.categories_viewed:
+                category_match = True
+            elif category_name:
                 for viewed_cat in signals.categories_viewed:
                     if viewed_cat.lower() in category_name.lower() or category_name.lower() in viewed_cat.lower():
                         category_match = True
@@ -318,7 +317,6 @@ class SessionReranker:
                 reasons.append('category_match')
             
             # Product relation boost (viewed similar products)
-            # Simple heuristic: if any product in session matches category
             if signals.products_viewed:
                 # Direct product match
                 if candidate in signals.products_viewed:
@@ -328,21 +326,26 @@ class SessionReranker:
                 else:
                     for viewed_pid in signals.products_viewed:
                         viewed_meta = product_metadata.get(viewed_pid, {})
-                        if viewed_meta.get('category_id') == category_id or viewed_meta.get('category_name') == category_name:
-                            boost += self.PRODUCT_BOOST
-                            reasons.append('related_product')
-                            break
+                        if viewed_meta:
+                            if (category_id and viewed_meta.get('category_id') == category_id) or \
+                               (category_slug and viewed_meta.get('category_slug') == category_slug) or \
+                               (category_name and viewed_meta.get('category_name') == category_name):
+                                boost += self.PRODUCT_BOOST
+                                reasons.append('related_product')
+                                break
             
             boosted_score = score + boost
             boosted_scores.append(boosted_score)
             boost_metadata.append({
+                'candidate': candidate,
                 'original_score': score,
                 'boost': boost,
-                'reasons': reasons
+                'reasons': reasons,
+                'is_boosted': boost > 0
             })
         
         # Re-rank with position constraints
-        # Create list of (index, score, uuid)
+        # Create list of (index, score, uuid, meta)
         ranked = list(zip(range(len(candidates)), boosted_scores, candidates, boost_metadata))
         ranked.sort(key=lambda x: x[1], reverse=True)
         
@@ -365,13 +368,17 @@ class SessionReranker:
         reranked_candidates = [c[2] for c in constrained]
         reranked_scores = [c[1] for c in constrained]
         
+        # Build candidate boost map
+        boost_map = {c[2]: c[3] for c in constrained}
+        
         # Metadata
         boost_stats = {
             'session_reranking_applied': True,
             'categories_matched': list(signals.categories_viewed),
             'products_referenced': len(signals.products_viewed),
             'items_boosted': sum(1 for m in boost_metadata if m['boost'] > 0),
-            'max_boost_applied': max((m['boost'] for m in boost_metadata), default=0)
+            'max_boost_applied': max((m['boost'] for m in boost_metadata), default=0.0),
+            'boost_map': boost_map
         }
         
         logger.info(f"  [OK] Re-ranking complete: {boost_stats['items_boosted']} items boosted")

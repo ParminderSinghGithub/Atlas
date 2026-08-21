@@ -828,6 +828,137 @@ class TestSessionRerankingAndGuestSupport(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(strategy, "popularity")
         self.assertEqual(len(items), 2)
 
+    async def test_no_session_clean_recommendation_does_not_claim_reranking(self):
+        """Clean user session does not claim session re-ranking and has no session_boosted flags."""
+        from app.api.routes import get_recommendations
+        from app.session.reranker import SessionReranker
+        from uuid import uuid4
+
+        user_uuid = "0b483e1c-192f-48e1-ad2d-6177fb888a88"
+        prod_uuid = uuid4()
+
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)  # No session data
+        clean_reranker = SessionReranker(redis_client=mock_redis)
+
+        mock_mapper = AsyncMock()
+        mock_mapper.map_to_catalog = AsyncMock(return_value=[(prod_uuid, 101)])
+        mock_mapper.get_valid_latent_ids = AsyncMock(return_value=[101])
+
+        mock_metadata = {
+            prod_uuid: {"name": "Regular Product", "price": 19.99, "category_name": "General"}
+        }
+
+        local_candidates = ("popularity", [(101, 0.85)])
+
+        with patch("app.api.routes.settings.redis_enabled", True), \
+             patch("app.api.routes.get_session_reranker", AsyncMock(return_value=clean_reranker)), \
+             patch("app.api.routes.get_latent_mapper", return_value=mock_mapper), \
+             patch("app.api.routes.generate_candidates", AsyncMock(return_value=local_candidates)), \
+             patch("app.api.routes.fetch_product_metadata", AsyncMock(return_value=mock_metadata)), \
+             patch("app.api.routes.apply_all_rules", AsyncMock(return_value=[prod_uuid])):
+
+            response = await get_recommendations(user_id=user_uuid, k=8)
+
+        self.assertEqual(len(response.recommendations), 1)
+        self.assertIsNone(response.recommendations[0].session_boosted)
+        self.assertFalse(response.session_reranking.get("session_reranking_applied", False))
+
+    async def test_route_recommendation_with_category_session_signal_sets_session_boosted_and_metadata(self):
+        """When user has category intent in Redis, recommendation route boosts item and sets session_boosted=True."""
+        from app.api.routes import get_recommendations
+        from app.session.reranker import SessionReranker
+        import json
+        from uuid import uuid4
+
+        user_uuid = "0b483e1c-192f-48e1-ad2d-6177fb888a88"
+        prod_elec = uuid4()
+        prod_book = uuid4()
+
+        mock_redis = AsyncMock()
+        session_data = {
+            "categories_viewed": ["electronics"],
+            "products_viewed": [],
+            "last_updated": time.time()
+        }
+        mock_redis.get = AsyncMock(return_value=json.dumps(session_data))
+        active_reranker = SessionReranker(redis_client=mock_redis)
+
+        mock_mapper = AsyncMock()
+        mock_mapper.map_to_catalog = AsyncMock(return_value=[(prod_book, 101), (prod_elec, 102)])
+        mock_mapper.get_valid_latent_ids = AsyncMock(return_value=[101, 102])
+
+        mock_metadata = {
+            prod_book: {"name": "History Book", "price": 15.00, "category_name": "Books", "category_slug": "books"},
+            prod_elec: {"name": "Bluetooth Speaker", "price": 45.00, "category_name": "Electronics", "category_slug": "electronics"}
+        }
+
+        # Baseline: Book (0.90) > Elec (0.85)
+        local_candidates = ("popularity", [(101, 0.90), (102, 0.85)])
+
+        with patch("app.api.routes.settings.redis_enabled", True), \
+             patch("app.api.routes.get_session_reranker", AsyncMock(return_value=active_reranker)), \
+             patch("app.api.routes.get_latent_mapper", return_value=mock_mapper), \
+             patch("app.api.routes.generate_candidates", AsyncMock(return_value=local_candidates)), \
+             patch("app.api.routes.fetch_product_metadata", AsyncMock(return_value=mock_metadata)), \
+             patch("app.api.routes.apply_all_rules", AsyncMock(return_value=[prod_book, prod_elec])):
+
+            response = await get_recommendations(user_id=user_uuid, k=8)
+
+        self.assertEqual(len(response.recommendations), 2)
+        # Verify Electronics product was boosted and moved to rank 1!
+        self.assertEqual(response.recommendations[0].product_id, prod_elec)
+        self.assertTrue(response.recommendations[0].session_boosted)
+        self.assertIn("category_match", response.recommendations[0].reason)
+        # Verify Book product was not boosted
+        self.assertEqual(response.recommendations[1].product_id, prod_book)
+        self.assertIsNone(response.recommendations[1].session_boosted)
+        # Verify session_reranking metadata
+        self.assertTrue(response.session_reranking["session_reranking_applied"])
+        self.assertEqual(response.session_reranking["items_boosted"], 1)
+        self.assertIn("electronics", response.session_reranking["categories_matched"])
+
+    async def test_multiple_session_events_accumulate_intent(self):
+        """Tracking multiple events accumulates both category and product signals in Redis."""
+        from app.session.reranker import SessionReranker
+        import json
+        from uuid import uuid4
+
+        user_id = "user_multievent_test"
+        prod_uuid = uuid4()
+
+        mock_redis = AsyncMock()
+        stored_state = {}
+
+        async def mock_setex(key, ttl, value):
+            stored_state[key] = value
+
+        async def mock_get(key):
+            return stored_state.get(key)
+
+        mock_redis.setex = AsyncMock(side_effect=mock_setex)
+        mock_redis.get = AsyncMock(side_effect=mock_get)
+
+        reranker = SessionReranker(redis_client=mock_redis)
+
+        # Event 1: Category view
+        await reranker.track_category_view(user_id, "electronics")
+        signals1 = await reranker._get_signals(user_id)
+        self.assertIn("electronics", signals1.categories_viewed)
+
+        # Event 2: Product view
+        await reranker.track_product_view(user_id, prod_uuid)
+        signals2 = await reranker._get_signals(user_id)
+        self.assertIn("electronics", signals2.categories_viewed)
+        self.assertIn(prod_uuid, signals2.products_viewed)
+
+        # Event 3: Second category view
+        await reranker.track_category_view(user_id, "accessories")
+        signals3 = await reranker._get_signals(user_id)
+        self.assertIn("electronics", signals3.categories_viewed)
+        self.assertIn("accessories", signals3.categories_viewed)
+        self.assertIn(prod_uuid, signals3.products_viewed)
+
 
 def run_tests():
     """Run test suite."""

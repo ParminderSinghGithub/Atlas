@@ -333,21 +333,35 @@ async def get_recommendations(
                         logger.exception("Session re-ranking failed in category similarity path | user_id=%s", user_id)
                 
                 # Build recommendations
-                recommendations = [
-                    RecommendedProduct(
-                        product_id=pid,
-                        score=score,
-                        rank=rank + 1,
-                        name=product_metadata.get(pid, {}).get('name'),
-                        price=product_metadata.get(pid, {}).get('price'),
-                        category_name=product_metadata.get(pid, {}).get('category_name'),
-                        category_slug=product_metadata.get(pid, {}).get('category_slug'),
-                        image_url=product_metadata.get(pid, {}).get('image_url'),
-                        reason=f"Recommended via {strategy_used}" if include_metadata else None,
-                        confidence=1.0 if include_metadata else None
+                boost_map = session_meta.get('boost_map', {}) if session_meta else {}
+                recommendations = []
+                for rank, (pid, score) in enumerate(zip(final_uuids, final_scores)):
+                    boost_info = boost_map.get(pid, {})
+                    is_boosted = boost_info.get('is_boosted', False)
+                    reasons = boost_info.get('reasons', [])
+                    
+                    if is_boosted:
+                        reason = f"Boosted by session intent ({', '.join(reasons)})"
+                    elif include_metadata:
+                        reason = f"Recommended via {strategy_used}"
+                    else:
+                        reason = None
+
+                    recommendations.append(
+                        RecommendedProduct(
+                            product_id=pid,
+                            score=score,
+                            rank=rank + 1,
+                            name=product_metadata.get(pid, {}).get('name'),
+                            price=product_metadata.get(pid, {}).get('price'),
+                            category_name=product_metadata.get(pid, {}).get('category_name'),
+                            category_slug=product_metadata.get(pid, {}).get('category_slug'),
+                            image_url=product_metadata.get(pid, {}).get('image_url'),
+                            reason=reason,
+                            confidence=1.0 if include_metadata else None,
+                            session_boosted=is_boosted if is_boosted else None
+                        )
                     )
-                    for rank, (pid, score) in enumerate(zip(final_uuids, final_scores))
-                ]
                 
                 latency_ms = (time.time() - start_time) * 1000
                 log_request(
@@ -569,21 +583,35 @@ async def get_recommendations(
                 )
         
         # Build response with real LightGBM scores and product metadata
-        recommendations = [
-            RecommendedProduct(
-                product_id=pid,
-                score=score,  # Use actual LightGBM scores
-                rank=rank + 1,
-                name=product_metadata.get(pid, {}).get('name'),
-                price=product_metadata.get(pid, {}).get('price'),
-                category_name=product_metadata.get(pid, {}).get('category_name'),
-                category_slug=product_metadata.get(pid, {}).get('category_slug'),
-                image_url=product_metadata.get(pid, {}).get('image_url'),
-                reason=f"Recommended via {strategy_used}" if include_metadata else None,
-                confidence=0.85 if include_metadata else None
+        boost_map = session_meta.get('boost_map', {}) if session_meta else {}
+        recommendations = []
+        for rank, (pid, score) in enumerate(final_products_with_scores):
+            boost_info = boost_map.get(pid, {})
+            is_boosted = boost_info.get('is_boosted', False)
+            reasons = boost_info.get('reasons', [])
+            
+            if is_boosted:
+                reason = f"Boosted by session intent ({', '.join(reasons)})"
+            elif include_metadata:
+                reason = f"Recommended via {strategy_used}"
+            else:
+                reason = None
+
+            recommendations.append(
+                RecommendedProduct(
+                    product_id=pid,
+                    score=score,  # Use actual LightGBM scores
+                    rank=rank + 1,
+                    name=product_metadata.get(pid, {}).get('name'),
+                    price=product_metadata.get(pid, {}).get('price'),
+                    category_name=product_metadata.get(pid, {}).get('category_name'),
+                    category_slug=product_metadata.get(pid, {}).get('category_slug'),
+                    image_url=product_metadata.get(pid, {}).get('image_url'),
+                    reason=reason,
+                    confidence=0.85 if include_metadata else None,
+                    session_boosted=is_boosted if is_boosted else None
+                )
             )
-            for rank, (pid, score) in enumerate(final_products_with_scores)
-        ]
         
         latency_ms = (time.time() - start_time) * 1000
         log_request(
