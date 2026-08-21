@@ -698,7 +698,7 @@ class TestSessionRerankingAndGuestSupport(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(resp.success)
         mock_reranker.track_product_view.assert_called_once_with(
-            "guest_abc123-session", prod_uuid
+            "guest_abc123-session", prod_uuid, category_slug=None
         )
 
     async def test_session_reranker_boosts_matching_category(self):
@@ -958,6 +958,86 @@ class TestSessionRerankingAndGuestSupport(unittest.IsolatedAsyncioTestCase):
         self.assertIn("electronics", signals3.categories_viewed)
         self.assertIn("accessories", signals3.categories_viewed)
         self.assertIn(prod_uuid, signals3.products_viewed)
+
+    async def test_product_view_tracking_resolves_category_and_boosts_recommendations(self):
+        """Tracking a product_view auto-resolves its category and boosts matching candidate products."""
+        from app.api.routes import track_session_event, get_recommendations
+        from app.api.schemas import SessionTrackRequest
+        from app.session.reranker import SessionReranker
+        import json
+        from uuid import uuid4
+
+        user_id = "user_prod_boost_test"
+        viewed_prod_uuid = uuid4()
+        candidate_same_cat = uuid4()
+        candidate_diff_cat = uuid4()
+
+        mock_redis = AsyncMock()
+        stored_state = {}
+
+        async def mock_setex(key, ttl, value):
+            stored_state[key] = value
+
+        async def mock_get(key):
+            return stored_state.get(key)
+
+        mock_redis.setex = AsyncMock(side_effect=mock_setex)
+        mock_redis.get = AsyncMock(side_effect=mock_get)
+
+        real_reranker = SessionReranker(redis_client=mock_redis)
+
+        mock_metadata = {
+            viewed_prod_uuid: {"name": "Gaming Laptop", "category_name": "Computers", "category_slug": "computers"},
+            candidate_same_cat: {"name": "Wireless Mouse", "category_name": "Computers", "category_slug": "computers"},
+            candidate_diff_cat: {"name": "Garden Hose", "category_name": "Gardening", "category_slug": "gardening"},
+        }
+
+        # Step 1: User views product (without category_slug)
+        track_req = SessionTrackRequest(
+            user_id=user_id,
+            event_type="product_view",
+            product_id=viewed_prod_uuid
+        )
+
+        with patch("app.api.routes.get_session_reranker", AsyncMock(return_value=real_reranker)), \
+             patch("app.api.routes.fetch_product_metadata", AsyncMock(return_value=mock_metadata)):
+            track_resp = await track_session_event(track_req)
+
+        self.assertTrue(track_resp.success)
+        signals = await real_reranker._get_signals(user_id)
+        self.assertIn(viewed_prod_uuid, signals.products_viewed)
+        self.assertIn("computers", signals.categories_viewed)
+
+        # Step 2: User requests recommendations
+        # Baseline order: Garden Hose (0.90) > Wireless Mouse (0.80)
+        local_candidates = ("popularity", [(101, 0.90), (102, 0.80)])
+        mock_mapper = AsyncMock()
+        mock_mapper.map_to_catalog = AsyncMock(return_value=[(candidate_diff_cat, 101), (candidate_same_cat, 102)])
+        mock_mapper.get_valid_latent_ids = AsyncMock(return_value=[101, 102])
+
+        with patch("app.api.routes.settings.redis_enabled", True), \
+             patch("app.api.routes.get_session_reranker", AsyncMock(return_value=real_reranker)), \
+             patch("app.api.routes.get_latent_mapper", return_value=mock_mapper), \
+             patch("app.api.routes.generate_candidates", AsyncMock(return_value=local_candidates)), \
+             patch("app.api.routes.fetch_product_metadata", AsyncMock(return_value=mock_metadata)), \
+             patch("app.api.routes.apply_all_rules", AsyncMock(return_value=[candidate_diff_cat, candidate_same_cat])):
+
+            rec_resp = await get_recommendations(user_id=user_id, k=8)
+
+        # Verify Wireless Mouse boosted above Garden Hose (0.80 + 0.20 = 1.00 > 0.90)
+        self.assertEqual(len(rec_resp.recommendations), 2)
+        self.assertEqual(rec_resp.recommendations[0].product_id, candidate_same_cat)
+        self.assertTrue(rec_resp.recommendations[0].session_boosted)
+        self.assertIn("category_match", rec_resp.recommendations[0].reason)
+
+        self.assertEqual(rec_resp.recommendations[1].product_id, candidate_diff_cat)
+        self.assertIsNone(rec_resp.recommendations[1].session_boosted)
+
+        # Verify metadata
+        self.assertTrue(rec_resp.session_reranking["session_reranking_applied"])
+        self.assertEqual(rec_resp.session_reranking["products_referenced"], 1)
+        self.assertEqual(rec_resp.session_reranking["items_boosted"], 1)
+        self.assertGreater(rec_resp.session_reranking["max_boost_applied"], 0.0)
 
 
 def run_tests():

@@ -336,8 +336,8 @@ async def get_recommendations(
                 boost_map = session_meta.get('boost_map', {}) if session_meta else {}
                 recommendations = []
                 for rank, (pid, score) in enumerate(zip(final_uuids, final_scores)):
-                    boost_info = boost_map.get(pid, {})
-                    is_boosted = boost_info.get('is_boosted', False)
+                    boost_info = boost_map.get(pid) or boost_map.get(str(pid)) or {}
+                    is_boosted = boost_info.get('is_boosted', False) or (boost_info.get('boost', 0.0) > 0)
                     reasons = boost_info.get('reasons', [])
                     
                     if is_boosted:
@@ -359,7 +359,7 @@ async def get_recommendations(
                             image_url=product_metadata.get(pid, {}).get('image_url'),
                             reason=reason,
                             confidence=1.0 if include_metadata else None,
-                            session_boosted=is_boosted if is_boosted else None
+                            session_boosted=True if is_boosted else None
                         )
                     )
                 
@@ -586,8 +586,8 @@ async def get_recommendations(
         boost_map = session_meta.get('boost_map', {}) if session_meta else {}
         recommendations = []
         for rank, (pid, score) in enumerate(final_products_with_scores):
-            boost_info = boost_map.get(pid, {})
-            is_boosted = boost_info.get('is_boosted', False)
+            boost_info = boost_map.get(pid) or boost_map.get(str(pid)) or {}
+            is_boosted = boost_info.get('is_boosted', False) or (boost_info.get('boost', 0.0) > 0)
             reasons = boost_info.get('reasons', [])
             
             if is_boosted:
@@ -609,7 +609,7 @@ async def get_recommendations(
                     image_url=product_metadata.get(pid, {}).get('image_url'),
                     reason=reason,
                     confidence=0.85 if include_metadata else None,
-                    session_boosted=is_boosted if is_boosted else None
+                    session_boosted=True if is_boosted else None
                 )
             )
         
@@ -933,11 +933,25 @@ async def track_session_event(request: SessionTrackRequest):
             if not request.product_id:
                 raise HTTPException(status_code=400, detail="product_id required for product_view")
             
-            await reranker.track_product_view(request.user_id, request.product_id)
-            logger.info(
-                "Session product view tracked | user_id=%s | product_id=%s",
+            category_slug = request.category_slug
+            if not category_slug:
+                try:
+                    prod_meta = await fetch_product_metadata([request.product_id])
+                    if request.product_id in prod_meta:
+                        category_slug = prod_meta[request.product_id].get('category_slug') or prod_meta[request.product_id].get('category_name')
+                except Exception:
+                    pass
+
+            await reranker.track_product_view(
                 request.user_id,
                 request.product_id,
+                category_slug=category_slug
+            )
+            logger.info(
+                "Session product view tracked | user_id=%s | product_id=%s | category_slug=%s",
+                request.user_id,
+                request.product_id,
+                category_slug,
             )
             return SessionTrackResponse(
                 success=True,

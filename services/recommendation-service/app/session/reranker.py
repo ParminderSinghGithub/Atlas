@@ -30,7 +30,7 @@ Usage:
         user_id, candidates, scores
     )
 """
-from typing import List, Dict, Optional, Tuple, Set
+from typing import List, Dict, Optional, Tuple, Set, Union, Any
 from uuid import UUID
 import json
 import time
@@ -50,8 +50,9 @@ logger = get_logger(__name__)
 @dataclass
 class SessionSignals:
     """User session intent signals."""
-    categories_viewed: Set[str]  # Category slugs
+    categories_viewed: Set[str]  # Category slugs / names
     products_viewed: Set[UUID]  # Product UUIDs
+    product_categories: Dict[str, str]  # Map str(product_id) -> category_slug / name
     last_updated: float  # Unix timestamp
     
     def is_stale(self, max_age_seconds: int = 1800) -> bool:
@@ -141,11 +142,13 @@ class SessionReranker:
                 signals = SessionSignals(
                     categories_viewed=set(),
                     products_viewed=set(),
+                    product_categories={},
                     last_updated=time.time()
                 )
             
             # Update
-            signals.categories_viewed.add(category_slug)
+            if category_slug:
+                signals.categories_viewed.add(str(category_slug).strip().lower())
             signals.last_updated = time.time()
             
             # Save
@@ -153,20 +156,26 @@ class SessionReranker:
             
             logger.debug(f"Tracked category view: user={user_id}, category={category_slug}")
         
-        except Exception as e:
-                logger.exception(
-                    "Failed to track category view | user_id=%s | category_slug=%s",
-                    user_id,
-                    category_slug,
-                )
+        except Exception:
+            logger.exception(
+                "Failed to track category view | user_id=%s | category_slug=%s",
+                user_id,
+                category_slug,
+            )
     
-    async def track_product_view(self, user_id: str, product_id: UUID):
+    async def track_product_view(
+        self,
+        user_id: str,
+        product_id: Union[UUID, str],
+        category_slug: Optional[str] = None
+    ):
         """
         Track product view in user session.
         
         Args:
             user_id: User identifier
             product_id: Product UUID viewed
+            category_slug: Optional category slug for the viewed product
         """
         if not self.enabled:
             return
@@ -180,24 +189,32 @@ class SessionReranker:
                 signals = SessionSignals(
                     categories_viewed=set(),
                     products_viewed=set(),
+                    product_categories={},
                     last_updated=time.time()
                 )
             
             # Update
-            signals.products_viewed.add(product_id)
+            prod_uuid = UUID(str(product_id)) if not isinstance(product_id, UUID) else product_id
+            signals.products_viewed.add(prod_uuid)
+            
+            if category_slug:
+                clean_cat = str(category_slug).strip().lower()
+                signals.categories_viewed.add(clean_cat)
+                signals.product_categories[str(prod_uuid)] = clean_cat
+            
             signals.last_updated = time.time()
             
             # Save
             await self._save_signals(user_id, signals)
             
-            logger.debug(f"Tracked product view: user={user_id}, product={product_id}")
+            logger.debug(f"Tracked product view: user={user_id}, product={product_id}, category={category_slug}")
         
-        except Exception as e:
-                logger.exception(
-                    "Failed to track product view | user_id=%s | product_id=%s",
-                    user_id,
-                    product_id,
-                )
+        except Exception:
+            logger.exception(
+                "Failed to track product view | user_id=%s | product_id=%s",
+                user_id,
+                product_id,
+            )
     
     async def _get_signals(self, user_id: str) -> Optional[SessionSignals]:
         """Load session signals from Redis."""
@@ -212,9 +229,19 @@ class SessionReranker:
                 return None
             
             parsed = json.loads(data)
+            categories = {str(c).strip().lower() for c in parsed.get('categories_viewed', []) if c}
+            products = set()
+            for pid in parsed.get('products_viewed', []):
+                try:
+                    products.add(UUID(str(pid)))
+                except Exception:
+                    pass
+            prod_cats = parsed.get('product_categories', {})
+            
             signals = SessionSignals(
-                categories_viewed=set(parsed.get('categories_viewed', [])),
-                products_viewed=set(UUID(pid) for pid in parsed.get('products_viewed', [])),
+                categories_viewed=categories,
+                products_viewed=products,
+                product_categories=prod_cats,
                 last_updated=parsed.get('last_updated', time.time())
             )
             
@@ -239,6 +266,7 @@ class SessionReranker:
             data = {
                 'categories_viewed': list(signals.categories_viewed),
                 'products_viewed': [str(pid) for pid in signals.products_viewed],
+                'product_categories': signals.product_categories,
                 'last_updated': signals.last_updated
             }
             
@@ -286,66 +314,96 @@ class SessionReranker:
         logger.info(f"  Categories viewed: {signals.categories_viewed}")
         logger.info(f"  Products viewed: {len(signals.products_viewed)}")
         
+        active_categories = set(signals.categories_viewed)
+        for cat in signals.product_categories.values():
+            if cat:
+                active_categories.add(str(cat).strip().lower())
+        
+        viewed_product_uuids = set(signals.products_viewed)
+        viewed_product_strs = {str(p) for p in signals.products_viewed}
+        
         # Calculate boosts
         boosted_scores = []
         boost_metadata = []
+        candidate_boost_map: Dict[Any, Dict] = {}
+        matched_categories_set = set()
         
         for candidate, score in zip(candidates, scores):
             boost = 0.0
             reasons = []
+            cand_uuid_str = str(candidate)
             
             # Get product metadata
-            metadata = product_metadata.get(candidate, {})
-            category_id = metadata.get('category_id')
-            category_name = metadata.get('category_name', '')
-            category_slug = metadata.get('category_slug', '')
+            metadata = product_metadata.get(candidate) or product_metadata.get(UUID(cand_uuid_str)) or {}
+            category_id = str(metadata.get('category_id', '')).strip().lower()
+            category_name = str(metadata.get('category_name', '')).strip().lower()
+            category_slug = str(metadata.get('category_slug', '')).strip().lower()
             
-            # Category boost - match by slug, ID, or name
-            category_match = False
-            if category_slug and category_slug in signals.categories_viewed:
-                category_match = True
-            elif category_id and str(category_id) in signals.categories_viewed:
-                category_match = True
-            elif category_name:
-                for viewed_cat in signals.categories_viewed:
-                    if viewed_cat.lower() in category_name.lower() or category_name.lower() in viewed_cat.lower():
-                        category_match = True
-                        break
+            # 1. Direct Product Match (viewed this exact product in current session)
+            if candidate in viewed_product_uuids or cand_uuid_str in viewed_product_strs:
+                boost += self.PRODUCT_BOOST * 2  # Strong boost (+0.6)
+                reasons.append('product_viewed')
+                if category_slug:
+                    matched_categories_set.add(category_slug)
+                elif category_name:
+                    matched_categories_set.add(category_name)
             
-            if category_match:
+            # 2. Category Match / Related Product (Category viewed directly or via product view)
+            category_matched = False
+            for active_cat in active_categories:
+                if not active_cat:
+                    continue
+                norm_active = active_cat.replace('-', ' ').replace('_', ' ')
+                norm_name = category_name.replace('-', ' ').replace('_', ' ')
+                norm_slug = category_slug.replace('-', ' ').replace('_', ' ')
+                
+                if (active_cat == category_slug or 
+                    active_cat == category_id or 
+                    active_cat in category_slug or 
+                    category_slug in active_cat or 
+                    norm_active in norm_name or 
+                    norm_name in norm_active or 
+                    norm_active in norm_slug or 
+                    norm_slug in norm_active):
+                    category_matched = True
+                    matched_categories_set.add(category_slug or category_name or active_cat)
+                    break
+            
+            if category_matched and 'product_viewed' not in reasons:
                 boost += self.CATEGORY_BOOST
                 reasons.append('category_match')
             
-            # Product relation boost (viewed similar products)
-            if signals.products_viewed:
-                # Direct product match
-                if candidate in signals.products_viewed:
-                    boost += self.PRODUCT_BOOST * 2  # Strong boost for viewed product
-                    reasons.append('product_viewed')
-                # Check if category matches any viewed product
-                else:
-                    for viewed_pid in signals.products_viewed:
-                        viewed_meta = product_metadata.get(viewed_pid, {})
-                        if viewed_meta:
-                            if (category_id and viewed_meta.get('category_id') == category_id) or \
-                               (category_slug and viewed_meta.get('category_slug') == category_slug) or \
-                               (category_name and viewed_meta.get('category_name') == category_name):
-                                boost += self.PRODUCT_BOOST
-                                reasons.append('related_product')
-                                break
+            # 3. Related Product Match via product_metadata (if viewed product was in metadata)
+            if not category_matched and signals.products_viewed and 'product_viewed' not in reasons:
+                for viewed_pid in viewed_product_uuids:
+                    viewed_meta = product_metadata.get(viewed_pid) or product_metadata.get(str(viewed_pid)) or {}
+                    if viewed_meta:
+                        v_cat_id = str(viewed_meta.get('category_id', '')).strip().lower()
+                        v_cat_name = str(viewed_meta.get('category_name', '')).strip().lower()
+                        v_cat_slug = str(viewed_meta.get('category_slug', '')).strip().lower()
+                        if ((category_id and v_cat_id == category_id) or
+                            (category_slug and v_cat_slug == category_slug) or
+                            (category_name and v_cat_name == category_name)):
+                            boost += self.PRODUCT_BOOST
+                            reasons.append('related_product')
+                            matched_categories_set.add(category_slug or category_name)
+                            break
             
             boosted_score = score + boost
             boosted_scores.append(boosted_score)
-            boost_metadata.append({
+            meta_entry = {
                 'candidate': candidate,
                 'original_score': score,
+                'boosted_score': boosted_score,
                 'boost': boost,
                 'reasons': reasons,
                 'is_boosted': boost > 0
-            })
+            }
+            boost_metadata.append(meta_entry)
+            candidate_boost_map[candidate] = meta_entry
+            candidate_boost_map[cand_uuid_str] = meta_entry
         
         # Re-rank with position constraints
-        # Create list of (index, score, uuid, meta)
         ranked = list(zip(range(len(candidates)), boosted_scores, candidates, boost_metadata))
         ranked.sort(key=lambda x: x[1], reverse=True)
         
@@ -355,7 +413,6 @@ class SessionReranker:
             position_shift = abs(new_pos - orig_pos)
             
             if position_shift > self.MAX_POSITION_SHIFT:
-                # Limit shift
                 clamped_pos = orig_pos + (self.MAX_POSITION_SHIFT if new_pos > orig_pos else -self.MAX_POSITION_SHIFT)
                 constrained.append((clamped_pos, score, uuid, meta))
             else:
@@ -369,12 +426,14 @@ class SessionReranker:
         reranked_scores = [c[1] for c in constrained]
         
         # Build candidate boost map
-        boost_map = {c[2]: c[3] for c in constrained}
+        boost_map = {str(c[2]): c[3] for c in constrained}
+        for c in constrained:
+            boost_map[c[2]] = c[3]
         
         # Metadata
         boost_stats = {
             'session_reranking_applied': True,
-            'categories_matched': list(signals.categories_viewed),
+            'categories_matched': list(matched_categories_set) if matched_categories_set else list(signals.categories_viewed),
             'products_referenced': len(signals.products_viewed),
             'items_boosted': sum(1 for m in boost_metadata if m['boost'] > 0),
             'max_boost_applied': max((m['boost'] for m in boost_metadata), default=0.0),
@@ -399,7 +458,7 @@ async def get_session_reranker(redis_url: Optional[str] = None) -> SessionRerank
     """Get or create global session reranker instance."""
     global _reranker_instance
     
-    if _reranker_instance is None:
+    if _reranker_instance is None or (not _reranker_instance.enabled and redis_url):
         _reranker_instance = await SessionReranker.create(redis_url)
     
     return _reranker_instance
