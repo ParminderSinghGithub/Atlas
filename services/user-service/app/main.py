@@ -17,9 +17,11 @@ from app.core.config import settings
 
 # Create FastAPI application
 app = FastAPI(
-    title="User Service",
-    description="Authentication service for Atlas e-commerce platform",
-    version="2.0.0"
+    title="Atlas User & Authentication Service",
+    description="Identity, JWT authentication, and secure password recovery service for Atlas.",
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 # CORS middleware (matches Node.js cors())

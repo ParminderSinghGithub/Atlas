@@ -1,0 +1,71 @@
+{
+  "timestamp": "2026-08-21T21:02:06.288354+00:00",
+  "platform": "Atlas E-Commerce & Recommendation Platform",
+  "version": "2.0.0",
+  "total_suites": 5,
+  "passed_suites": 5,
+  "failed_suites": 0,
+  "total_duration_seconds": 20.77,
+  "results": [
+    {
+      "name": "Recommendation & Personalization Suite (82 tests)",
+      "command": "C:\\Users\\parmi\\AppData\\Local\\Programs\\Python\\Python312\\python.exe -m unittest discover -s tests/recommendation",
+      "exit_code": 0,
+      "duration_seconds": 7.868,
+      "success": true,
+      "output_summary": ".reranker |   Products viewed: 0\n2026-08-22 02:31:53 | INFO     | app.session.reranker |   [OK] Re-ranking complete: 1 items boosted\n2026-08-22 02:31:53 | INFO     | app.session.reranker | Applying session re-ranking: user=user_b\n2026-08-22 02:31:53 | INFO     | app.session.reranker |   Categories viewed: {'target_cat'}\n2026-08-22 02:31:53 | INFO     | app.session.reranker |   Products viewed: 0\n2026-08-22 02:31:53 | INFO     | app.session.reranker |   [OK] Re-ranking complete: 10 items boosted\n"
+    },
+    {
+      "name": "User Authentication & Recovery Suite (5 tests)",
+      "command": "C:\\Projects\\P1\\services\\catalog-service\\venv\\Scripts\\python.exe -m unittest tests/auth/test_user_service_unit.py",
+      "exit_code": 0,
+      "duration_seconds": 2.343,
+      "success": true,
+      "output_summary": "\n>>> [EMAIL/OTP SERVICE] Password reset code for bob@example.com: 267810 (Expires in 15m) <<<\n\n"
+    },
+    {
+      "name": "Session Boost & Personalization Tuning Dynamics",
+      "command": "C:\\Users\\parmi\\AppData\\Local\\Programs\\Python\\Python312\\python.exe -m unittest tests/recommendation/test_session_boost_tuning.py",
+      "exit_code": 0,
+      "duration_seconds": 0.281,
+      "success": true,
+      "output_summary": ""
+    },
+    {
+      "name": "FastAPI OpenAPI Schemas",
+      "duration_seconds": 4.381,
+      "success": true,
+      "services": {
+        "api-gateway": {
+          "valid": true,
+          "notice": "Verified statically"
+        },
+        "recommendation-service": {
+          "valid": true,
+          "notice": "Verified statically"
+        },
+        "catalog-service": {
+          "valid": true,
+          "title": "Atlas Catalog Service",
+          "version": "2.0.0",
+          "routes": 14
+        },
+        "user-service": {
+          "valid": true,
+          "title": "Atlas User & Authentication Service",
+          "version": "2.0.0",
+          "routes": 13
+        }
+      }
+    },
+    {
+      "name": "Frontend Production Build & Typecheck (Vite + TS)",
+      "command": "npm.cmd run build",
+      "exit_code": 0,
+      "duration_seconds": 5.892,
+      "success": true,
+      "output_summary": "asswordPage-C4IcLL6H.js     \u001b[39m\u001b[1m\u001b[2m  7.31 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  2.16 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/ProductDetailPage-Aluked8E.js      \u001b[39m\u001b[1m\u001b[2m  8.88 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  3.37 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/HomePage-DYE1wiir.js               \u001b[39m\u001b[1m\u001b[2m 11.36 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  3.08 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/index-CJ6J1CeG.js                  \u001b[39m\u001b[1m\u001b[2m273.76 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip: 90.59 kB\u001b[22m\n\u001b[32m\u00e2\u0153\u201c built in 2.19s\u001b[39m\n"
+    }
+  ],
+  "verdict": "GO"
+}

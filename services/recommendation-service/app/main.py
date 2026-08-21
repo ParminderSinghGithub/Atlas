@@ -225,9 +225,9 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="P1 Recommendation Service",
-    description="ML-powered recommendation engine for P1 e-commerce platform",
-    version="1.0.0",
+    title="Atlas Recommendation Service",
+    description="Hybrid recommendation engine combining collaborative filtering, session intent reranking, and long-term user personalization for Atlas.",
+    version="2.0.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc"

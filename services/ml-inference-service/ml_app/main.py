@@ -99,8 +99,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Atlas External ML Inference Service",
     description="Dedicated high-throughput ML inference service for Atlas recommendation platform",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 

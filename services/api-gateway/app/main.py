@@ -1,3 +1,17 @@
+"""
+Atlas API Gateway - Main Application
+
+Unified gateway orchestrating requests across:
+- Catalog Service (Products, Categories, Event Ingestion)
+- Recommendation Service (Hybrid Recommendations, Session Tracking)
+- User Service (Authentication, Identity, Password Recovery)
+- External ML Inference Service (OCI OCI-hosted High-throughput Models)
+"""
+import asyncio
+import time
+from datetime import datetime, timezone
+from typing import Dict, Any, Optional
+
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +24,44 @@ from app.core.config import (
     validate_service_url,
 )
 
-app = FastAPI()
+tags_metadata = [
+    {
+        "name": "Health & Readiness",
+        "description": "System liveness, readiness, and coordinated cold-start warm-up probes.",
+    },
+    {
+        "name": "Recommendations & Session",
+        "description": "Recommendation queries and real-time session intent tracking.",
+    },
+    {
+        "name": "Catalog",
+        "description": "Product catalog queries and category navigation.",
+    },
+    {
+        "name": "Authentication",
+        "description": "User registration, login, profile, and password recovery.",
+    },
+    {
+        "name": "Events",
+        "description": "Client interaction event ingestion (views, clicks, purchases).",
+    },
+]
+
+app = FastAPI(
+    title="Atlas API Gateway",
+    description="Unified API Gateway and request orchestrator for the Atlas e-commerce and recommendation platform.",
+    version="2.0.0",
+    openapi_tags=tags_metadata,
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+# In-memory readiness cache to prevent request flooding
+_readiness_cache: Dict[str, Any] = {
+    "data": None,
+    "timestamp": 0.0,
+}
+_readiness_lock = asyncio.Lock()
 
 
 @app.on_event("startup")
@@ -18,32 +69,195 @@ async def startup_diagnostics():
     """Log and validate downstream service URL configuration."""
     resolved_url = get_recommendation_service_url()
     url_source = get_recommendation_service_url_source()
-    print(f"Recommendation service URL: {resolved_url}")
-    print(f"Recommendation service URL source: {url_source}")
+    print(f"Atlas API Gateway 2.0 starting up...")
+    print(f"Recommendation service URL: {resolved_url} ({url_source})")
+    print(f"Catalog service URL: {settings.CATALOG_SERVICE_URL}")
+    print(f"User service URL: {settings.USER_SERVICE_URL}")
+    print(f"ML Inference service URL: {settings.ML_INFERENCE_SERVICE_URL}")
     validate_service_url(resolved_url, "RECOMMENDATION_SERVICE_URL")
 
-# Add CORS middleware to allow frontend requests
+
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (can restrict to specific origins in production)
-    allow_credentials=False,  # Must be False when allow_origins is ["*"]
-    allow_methods=["*"],  # Allow all HTTP methods
-    allow_headers=["*"],  # Allow all headers
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-@app.get("/ping")
-async def root():
-    return {"message": "API Gateway alive"}
 
-@app.get("/health")
+@app.get("/ping", tags=["Health & Readiness"], summary="Gateway Liveness Ping")
+async def root():
+    """Fast liveness check for API Gateway."""
+    return {"message": "Atlas API Gateway alive", "service": "api-gateway", "status": "ok"}
+
+
+@app.get("/health", tags=["Health & Readiness"], summary="Gateway Health Check")
 async def health():
-    """Health check endpoint for Kubernetes/Docker."""
-    return {"status": "healthy", "service": "api-gateway"}
+    """Standard health check endpoint."""
+    return {
+        "status": "healthy",
+        "service": "api-gateway",
+        "version": "2.0.0",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+async def _probe_single_service(
+    client: httpx.AsyncClient,
+    service_key: str,
+    name: str,
+    url: str,
+    is_critical: bool = True
+) -> Dict[str, Any]:
+    """Probe a single downstream service and measure latency."""
+    t0 = time.time()
+    try:
+        resp = await client.get(url)
+        elapsed_ms = round((time.time() - t0) * 1000, 2)
+        if resp.status_code in (200, 204):
+            return {
+                "name": name,
+                "status": "ready",
+                "latency_ms": elapsed_ms,
+                "critical": is_critical,
+                "status_code": resp.status_code,
+            }
+        else:
+            return {
+                "name": name,
+                "status": "warming_up" if resp.status_code in (502, 503, 504) else "degraded",
+                "latency_ms": elapsed_ms,
+                "critical": is_critical,
+                "status_code": resp.status_code,
+            }
+    except httpx.TimeoutException:
+        elapsed_ms = round((time.time() - t0) * 1000, 2)
+        return {
+            "name": name,
+            "status": "warming_up",
+            "latency_ms": elapsed_ms,
+            "critical": is_critical,
+            "error": "Probe timeout (container warming up)",
+        }
+    except Exception as e:
+        elapsed_ms = round((time.time() - t0) * 1000, 2)
+        return {
+            "name": name,
+            "status": "unavailable",
+            "latency_ms": elapsed_ms,
+            "critical": is_critical,
+            "error": str(e),
+        }
+
+
+@app.get("/api/v1/ready", tags=["Health & Readiness"], summary="Coordinated System Readiness & Warm-up")
+@app.get("/ready", tags=["Health & Readiness"], summary="Coordinated System Readiness & Warm-up Alias")
+async def system_readiness(force_refresh: bool = False):
+    """
+    Coordinated readiness and warm-up probe for Atlas.
+    
+    Concurrently probes and warms all core microservices:
+    - Catalog Service
+    - Recommendation Service
+    - User Service
+    - ML Inference Service (OCI)
+    
+    Returns structured status indicating overall readiness:
+    - 'ready': All critical dependencies are responsive.
+    - 'warming_up': One or more services are waking from cold start.
+    - 'degraded': Optional service is offline, but core browsing functions.
+    - 'unavailable': Critical dependencies unreachable.
+    """
+    now = time.time()
+    if not force_refresh and _readiness_cache["data"] is not None:
+        if (now - _readiness_cache["timestamp"]) < settings.READINESS_CACHE_TTL_SECONDS:
+            return _readiness_cache["data"]
+
+    async with _readiness_lock:
+        # Double check after lock
+        if not force_refresh and _readiness_cache["data"] is not None:
+            if (time.time() - _readiness_cache["timestamp"]) < settings.READINESS_CACHE_TTL_SECONDS:
+                return _readiness_cache["data"]
+
+        rec_url = get_recommendation_service_url()
+        cat_url = settings.CATALOG_SERVICE_URL.rstrip("/")
+        user_url = settings.USER_SERVICE_URL.rstrip("/")
+        ml_url = settings.ML_INFERENCE_SERVICE_URL.rstrip("/")
+
+        probes = [
+            ("catalog_service", "Catalog Service", f"{cat_url}/api/v1/health", True),
+            ("recommendation_service", "Recommendation Service", f"{rec_url}/health", True),
+            ("user_service", "User Service", f"{user_url}/api/auth/ping", False),
+            ("ml_inference_service", "ML Inference Engine", f"{ml_url}/health", False),
+        ]
+
+        timeout = httpx.Timeout(settings.PROBE_TIMEOUT_SECONDS)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            tasks = [
+                _probe_single_service(client, key, name, url, critical)
+                for key, name, url, critical in probes
+            ]
+            results_list = await asyncio.gather(*tasks)
+
+        services_dict = {
+            "api_gateway": {
+                "name": "API Gateway",
+                "status": "ready",
+                "latency_ms": 0.1,
+                "critical": True,
+            }
+        }
+        for probe_def, res in zip(probes, results_list):
+            services_dict[probe_def[0]] = res
+
+        # Compute overall status
+        ready_count = sum(1 for s in services_dict.values() if s.get("status") == "ready")
+        warming_count = sum(1 for s in services_dict.values() if s.get("status") == "warming_up")
+        total_count = len(services_dict)
+
+        critical_ready = all(
+            s.get("status") == "ready"
+            for s in services_dict.values()
+            if s.get("critical", False)
+        )
+        critical_warming = any(
+            s.get("status") == "warming_up"
+            for s in services_dict.values()
+            if s.get("critical", False)
+        )
+
+        if ready_count == total_count:
+            overall_status = "ready"
+        elif critical_ready:
+            overall_status = "degraded"  # Core catalog & recommendations ready
+        elif critical_warming:
+            overall_status = "warming_up"
+        else:
+            overall_status = "unavailable"
+
+        response_data = {
+            "status": overall_status,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "summary": {
+                "total": total_count,
+                "ready": ready_count,
+                "warming": warming_count,
+                "unavailable": total_count - ready_count - warming_count,
+            },
+            "services": services_dict,
+        }
+
+        _readiness_cache["data"] = response_data
+        _readiness_cache["timestamp"] = time.time()
+        return response_data
+
 
 # ==================== USER SERVICE ROUTES ====================
-@app.api_route("/api/auth/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+@app.api_route("/api/auth/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], tags=["Authentication"])
 async def proxy_auth(path: str, request: Request):
-    """Proxy all /api/auth/* requests to user-service"""
+    """Proxy all /api/auth/* requests to user-service."""
     async with httpx.AsyncClient() as client:
         url = f"{settings.USER_SERVICE_URL}/api/auth/{path}"
         headers = dict(request.headers)
@@ -65,16 +279,16 @@ async def proxy_auth(path: str, request: Request):
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
 
+
 # ==================== CATALOG SERVICE ROUTES ====================
-@app.api_route("/api/v1/catalog/{path:path}", methods=["GET", "OPTIONS"])
+@app.api_route("/api/v1/catalog/{path:path}", methods=["GET", "OPTIONS"], tags=["Catalog"])
 async def proxy_catalog(path: str, request: Request):
-    """Proxy all /api/v1/catalog/* requests to catalog-service (read-only)"""
+    """Proxy all /api/v1/catalog/* requests to catalog-service (read-only)."""
     async with httpx.AsyncClient() as client:
         url = f"{settings.CATALOG_SERVICE_URL}/api/v1/catalog/{path}"
         headers = dict(request.headers)
         headers.pop("host", None)
         
-        # Forward query parameters
         query_params = str(request.url.query)
         if query_params:
             url = f"{url}?{query_params}"
@@ -89,50 +303,39 @@ async def proxy_catalog(path: str, request: Request):
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
 
+
 # ==================== RECOMMENDATION SERVICE ROUTES ====================
-@app.api_route("/api/v1/recommendations", methods=["GET", "OPTIONS"])
+@app.api_route("/api/v1/recommendations", methods=["GET", "OPTIONS"], tags=["Recommendations & Session"])
 async def proxy_recommendations(request: Request):
-    """Proxy /api/v1/recommendations to recommendation-service"""
+    """Proxy /api/v1/recommendations to recommendation-service."""
     async with httpx.AsyncClient(timeout=settings.RECOMMENDATION_TIMEOUT_SECONDS) as client:
         base_url = get_recommendation_service_url()
         url = f"{base_url}/api/v1/recommendations"
         headers = dict(request.headers)
         headers.pop("host", None)
         
-        # Forward query parameters
         query_params = str(request.url.query)
         if query_params:
             url = f"{url}?{query_params}"
-        print(
-            "Proxying recommendation request | "
-            f"path={request.url.path} | query_params={query_params or '<none>'} | "
-            f"base_url={base_url} | upstream_url={url}"
-        )
         
         try:
             response = await client.get(url, headers=headers)
-            print(
-                "Recommendation upstream response | "
-                f"status_code={response.status_code} | upstream_url={url}"
-            )
             return Response(
                 content=response.content,
                 status_code=response.status_code,
                 headers=dict(response.headers),
             )
         except httpx.TimeoutException as e:
-            print(f"Recommendation proxy timeout | upstream_url={url} | error={e}")
-            return JSONResponse({"error": str(e)}, status_code=504)
+            return JSONResponse({"error": f"Recommendation request timed out ({settings.RECOMMENDATION_TIMEOUT_SECONDS}s)"}, status_code=504)
         except httpx.HTTPError as e:
-            print(f"Recommendation proxy upstream error | upstream_url={url} | error={e}")
             return JSONResponse({"error": str(e)}, status_code=502)
         except Exception as e:
-            print(f"Recommendation proxy exception | upstream_url={url} | error={e}")
             return JSONResponse({"error": str(e)}, status_code=500)
 
-@app.api_route("/api/v1/session/track", methods=["POST", "OPTIONS"])
+
+@app.api_route("/api/v1/session/track", methods=["POST", "OPTIONS"], tags=["Recommendations & Session"])
 async def proxy_session_track(request: Request):
-    """Proxy session tracking to recommendation-service"""
+    """Proxy session tracking to recommendation-service."""
     async with httpx.AsyncClient() as client:
         base_url = get_recommendation_service_url()
         url = f"{base_url}/api/v1/session/track"
@@ -141,20 +344,11 @@ async def proxy_session_track(request: Request):
         
         try:
             body = await request.body()
-            print(
-                "Proxying session tracking request | "
-                f"path={request.url.path} | query_params={str(request.url.query) or '<none>'} | "
-                f"base_url={base_url} | upstream_url={url}"
-            )
             response = await client.request(
                 method=request.method,
                 url=url,
                 content=body,
                 headers=headers,
-            )
-            print(
-                "Session tracking upstream response | "
-                f"status_code={response.status_code} | upstream_url={url}"
             )
             return Response(
                 content=response.content,
@@ -162,19 +356,17 @@ async def proxy_session_track(request: Request):
                 headers=dict(response.headers),
             )
         except httpx.TimeoutException as e:
-            print(f"Session tracking proxy timeout | upstream_url={url} | error={e}")
             return JSONResponse({"error": str(e)}, status_code=504)
         except httpx.HTTPError as e:
-            print(f"Session tracking proxy upstream error | upstream_url={url} | error={e}")
             return JSONResponse({"error": str(e)}, status_code=502)
         except Exception as e:
-            print(f"Session tracking proxy exception | upstream_url={url} | error={e}")
             return JSONResponse({"error": str(e)}, status_code=500)
 
+
 # ==================== EVENT INGESTION ROUTES ====================
-@app.api_route("/events/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+@app.api_route("/events/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], tags=["Events"])
 async def proxy_events_with_path(path: str, request: Request):
-    """Proxy all /events/* requests to catalog-service"""
+    """Proxy all /events/* requests to catalog-service."""
     async with httpx.AsyncClient() as client:
         url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/events/{path}"
         headers = dict(request.headers)
@@ -196,9 +388,10 @@ async def proxy_events_with_path(path: str, request: Request):
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
 
-@app.api_route("/events", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+
+@app.api_route("/events", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], tags=["Events"])
 async def proxy_events(request: Request):
-    """Proxy /events (without path) to catalog-service"""
+    """Proxy /events (without path) to catalog-service."""
     async with httpx.AsyncClient() as client:
         url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/events"
         headers = dict(request.headers)

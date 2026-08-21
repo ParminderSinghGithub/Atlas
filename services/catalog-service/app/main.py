@@ -46,10 +46,12 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI application
 app = FastAPI(
-    title="Product Catalog Service",
-    description="API for querying products, categories, sellers, and event ingestion",
-    version="1.0.0",
-    lifespan=lifespan
+    title="Atlas Catalog Service",
+    description="Product catalog, taxonomy metadata, and event ingestion service for Atlas.",
+    version="2.0.0",
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 # CORS middleware (allow all origins for development)

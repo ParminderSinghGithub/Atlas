@@ -30,6 +30,7 @@ Usage:
         user_id, candidates, scores
     )
 """
+from __future__ import annotations
 from typing import List, Dict, Optional, Tuple, Set, Union, Any
 from uuid import UUID
 import json
@@ -40,6 +41,7 @@ try:
     import redis.asyncio as redis
     REDIS_AVAILABLE = True
 except ImportError:
+    redis = None  # type: ignore
     REDIS_AVAILABLE = False
 
 from app.core.logging import get_logger
@@ -63,10 +65,10 @@ class SessionSignals:
 class SessionReranker:
     """Apply session-aware re-ranking to recommendations."""
     
-    # Re-ranking parameters
-    CATEGORY_BOOST = 0.2  # Boost for matching category
-    PRODUCT_BOOST = 0.3  # Boost for related products
-    MAX_POSITION_SHIFT = 3  # Max positions to move up/down
+    # Re-ranking parameters (relative score-space weights)
+    CATEGORY_BOOST = 0.35  # Relative weight for matching category intent
+    PRODUCT_BOOST = 0.30  # Relative weight for related products
+    MAX_POSITION_SHIFT = 4  # Max positions to move up/down (bounded reranking)
     SESSION_TTL = 1800  # 30 minutes
     
     def __init__(self, redis_client: Optional[redis.Redis] = None):
@@ -322,6 +324,16 @@ class SessionReranker:
         viewed_product_uuids = set(signals.products_viewed)
         viewed_product_strs = {str(p) for p in signals.products_viewed}
         
+        # Dynamic score-space scaling: calibrate boost relative to score distribution
+        if scores and len(scores) > 0:
+            score_span = max(float(max(scores)) - float(min(scores)), 1.0)
+        else:
+            score_span = 1.0
+
+        effective_direct_product_boost = (self.PRODUCT_BOOST * 2.0) * score_span
+        effective_category_boost = self.CATEGORY_BOOST * score_span
+        effective_related_boost = self.PRODUCT_BOOST * score_span
+
         # Calculate boosts
         boosted_scores = []
         boost_metadata = []
@@ -341,7 +353,7 @@ class SessionReranker:
             
             # 1. Direct Product Match (viewed this exact product in current session)
             if candidate in viewed_product_uuids or cand_uuid_str in viewed_product_strs:
-                boost += self.PRODUCT_BOOST * 2  # Strong boost (+0.6)
+                boost += effective_direct_product_boost
                 reasons.append('product_viewed')
                 if category_slug:
                     matched_categories_set.add(category_slug)
@@ -370,7 +382,7 @@ class SessionReranker:
                     break
             
             if category_matched and 'product_viewed' not in reasons:
-                boost += self.CATEGORY_BOOST
+                boost += effective_category_boost
                 reasons.append('category_match')
             
             # 3. Related Product Match via product_metadata (if viewed product was in metadata)
@@ -384,7 +396,7 @@ class SessionReranker:
                         if ((category_id and v_cat_id == category_id) or
                             (category_slug and v_cat_slug == category_slug) or
                             (category_name and v_cat_name == category_name)):
-                            boost += self.PRODUCT_BOOST
+                            boost += effective_related_boost
                             reasons.append('related_product')
                             matched_categories_set.add(category_slug or category_name)
                             break

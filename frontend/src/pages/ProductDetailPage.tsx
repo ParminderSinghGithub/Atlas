@@ -14,7 +14,6 @@ export const ProductDetailPage: React.FC = () => {
   const { userId } = useAuth();
   const [product, setProduct] = useState<Product | null>(null);
   const [similarProducts, setSimilarProducts] = useState<Recommendation[]>([]);
-  const [strategyUsed, setStrategyUsed] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [loadingSimilar, setLoadingSimilar] = useState(true);
   const [addingToCart, setAddingToCart] = useState(false);
@@ -65,8 +64,7 @@ export const ProductDetailPage: React.FC = () => {
     try {
       const recResponse = await recommendationService.getSimilarProducts(id, 5);
       setSimilarProducts(recResponse.recommendations);
-      setStrategyUsed(recResponse.strategy_used);
-      console.log(`[DETAIL] Similar products strategy: ${recResponse.strategy_used}`);
+      console.log(`[DETAIL] Similar products loaded: ${recResponse.recommendations.length}`);
     } catch (error) {
       console.error('Failed to load similar products:', error);
     } finally {
@@ -189,41 +187,38 @@ export const ProductDetailPage: React.FC = () => {
           </div>
         ) : (
           <>
-            <div className="text-sm text-gray-500 mb-2">
-              Strategy: {strategyUsed} | {similarProducts.length} items
-            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {similarProducts.map((rec) => (
                 <Link
                   key={rec.product_id}
                   to={`/products/${rec.product_id}`}
-                  className="border rounded p-4 hover:shadow-lg transition group"
+                  className="bg-white border border-gray-200/80 rounded-xl p-4 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group flex flex-col justify-between"
                 >
-                  {rec.image_url && (
-                    <img
-                      src={rec.image_url}
-                      alt={rec.name || rec.product_id}
-                      className="w-full h-32 object-contain mb-2"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                  )}
-                  <div className="text-sm font-semibold mb-2 truncate">
-                    {rec.name || rec.product_id}
+                  <div className="h-32 flex items-center justify-center bg-gray-50 rounded-lg p-2 mb-3">
+                    {rec.image_url ? (
+                      <img
+                        src={rec.image_url}
+                        alt={rec.name || rec.product_id}
+                        className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    ) : (
+                      <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    )}
                   </div>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs text-gray-600">
-                      Rank: {rec.rank}
+                  <div>
+                    <div className="text-xs font-medium text-gray-800 line-clamp-2 leading-relaxed mb-2">
+                      {rec.name || rec.product_id}
                     </div>
-                    <div className="text-xs text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                      Score: {rec.score.toFixed(3)}
-                    </div>
+                    {rec.price && (
+                      <div className="text-sm font-bold text-gray-900 mt-1">
+                        ₹{typeof rec.price === 'string' ? parseFloat(rec.price).toFixed(2) : rec.price.toFixed(2)}
+                      </div>
+                    )}
                   </div>
-                  {rec.price && (
-                    <div className="text-sm font-bold text-green-600 mt-2">
-                      ₹{typeof rec.price === 'string' ? parseFloat(rec.price).toFixed(2) : rec.price.toFixed(2)}
-                    </div>
-                  )}
                 </Link>
               ))}
             </div>

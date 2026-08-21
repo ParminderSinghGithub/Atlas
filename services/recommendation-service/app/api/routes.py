@@ -593,8 +593,8 @@ async def get_recommendations(
             if pid in valid_pids
         ]
         
-        # Step 7: Top-K Selection
-        final_products_with_scores = filtered_products_with_scores[:k]
+        # Candidate pool for reranking (full hydrated candidates)
+        reranking_pool = filtered_products_with_scores
 
         # Step 7.5: Long-Term Personalization (before session reranking)
         lt_meta = None
@@ -604,12 +604,12 @@ async def get_recommendations(
                 preferences = await pref_loader.get_preferences(str(user_id))
                 if not preferences.is_empty():
                     lt_candidates, lt_scores, lt_meta = apply_long_term_boost(
-                        candidates=[pid for pid, _ in final_products_with_scores],
-                        scores=[score for _, score in final_products_with_scores],
+                        candidates=[pid for pid, _ in reranking_pool],
+                        scores=[score for _, score in reranking_pool],
                         product_metadata=product_metadata,
                         preferences=preferences,
                     )
-                    final_products_with_scores = list(zip(lt_candidates, lt_scores))
+                    reranking_pool = list(zip(lt_candidates, lt_scores))
                     logger.info(
                         "Long-term personalization applied | user=%s | boosted=%s | source=%s",
                         user_id,
@@ -631,18 +631,21 @@ async def get_recommendations(
                     logger.info("Applying session-aware re-ranking...")
                     reranked_candidates, reranked_scores, session_meta = await reranker.apply_session_boost(
                         user_id=str(user_id),
-                        candidates=[pid for pid, _ in final_products_with_scores],
-                        scores=[score for _, score in final_products_with_scores],
+                        candidates=[pid for pid, _ in reranking_pool],
+                        scores=[score for _, score in reranking_pool],
                         product_metadata=product_metadata
                     )
-                    final_products_with_scores = list(zip(reranked_candidates, reranked_scores))
+                    reranking_pool = list(zip(reranked_candidates, reranked_scores))
                     logger.info(f"Session re-ranking applied: {session_meta}")
             except Exception:
                 logger.exception(
                     "Session re-ranking failed, using original ranking | user_id=%s | candidate_count=%s",
                     user_id,
-                    len(final_products_with_scores),
+                    len(reranking_pool),
                 )
+
+        # Final Top-K Selection from reranked candidate pool
+        final_products_with_scores = reranking_pool[:k]
 
         # Build boost maps for response metadata
         session_boost_map = session_meta.get('boost_map', {}) if session_meta else {}

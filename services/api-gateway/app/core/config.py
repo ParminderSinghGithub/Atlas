@@ -5,9 +5,12 @@ Environment variables:
 - USER_SERVICE_URL: Downstream user service base URL
 - CATALOG_SERVICE_URL: Downstream catalog service base URL
 - RECOMMENDATION_SERVICE_URL: Downstream recommendation service base URL
+- ML_INFERENCE_SERVICE_URL: External ML inference service base URL
+- RECOMMENDATION_TIMEOUT_SECONDS: Gateway upstream timeout for recommendation requests
 """
 import os
 from urllib.parse import urlparse
+from typing import Optional
 
 from pydantic_settings import BaseSettings
 
@@ -18,7 +21,10 @@ class Settings(BaseSettings):
     USER_SERVICE_URL: str = "http://user-service:5000"
     CATALOG_SERVICE_URL: str = "http://catalog-service:5004"
     RECOMMENDATION_SERVICE_URL: str = "http://recommendation-service:5005"
+    ML_INFERENCE_SERVICE_URL: str = "http://150.230.143.133:8001"
     RECOMMENDATION_TIMEOUT_SECONDS: float = 30.0
+    PROBE_TIMEOUT_SECONDS: float = 4.0
+    READINESS_CACHE_TTL_SECONDS: float = 10.0
 
     class Config:
         env_file = ".env"
@@ -57,7 +63,6 @@ def validate_service_url(url: str, setting_name: str) -> None:
     """Fail fast on empty or protocol-less downstream URLs."""
     if not url:
         raise ValueError(f"{setting_name} resolved to an empty string")
-
     parsed = urlparse(url)
     if not parsed.scheme or not parsed.netloc:
-        raise ValueError(f"{setting_name} must include protocol and host: {url!r}")
+        raise ValueError(f"{setting_name} must contain scheme and host: {url}")

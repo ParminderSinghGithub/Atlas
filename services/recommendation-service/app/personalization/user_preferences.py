@@ -40,12 +40,18 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
 from uuid import UUID
 
-import asyncpg
+try:
+    import asyncpg
+    _ASYNCPG_AVAILABLE = True
+except ImportError:
+    asyncpg = None  # type: ignore
+    _ASYNCPG_AVAILABLE = False
 
 try:
     import redis.asyncio as _aioredis
     _REDIS_AVAILABLE = True
 except ImportError:
+    _aioredis = None  # type: ignore
     _REDIS_AVAILABLE = False
 
 from app.core.config import settings
@@ -352,6 +358,15 @@ def apply_long_term_boost(
     if preferences.is_empty():
         return candidates, scores, {"applied": False, "preferences_source": "none"}
 
+    # Dynamic score-space scaling: calibrated relative to score distribution
+    if scores and len(scores) > 0:
+        score_span = max(float(max(scores)) - float(min(scores)), 1.0)
+    else:
+        score_span = 1.0
+
+    effective_lt_boost = _MAX_LT_BOOST * score_span
+    max_lt_position_shift = 2
+
     boosted_scores: List[float] = []
     boost_flags: List[bool] = []
     boost_reasons: List[str] = []
@@ -362,7 +377,7 @@ def apply_long_term_boost(
         cat_name = str(meta.get("category_name", "")).strip().lower()
 
         if preferences.matches_category(cat_slug, cat_name):
-            boost = _MAX_LT_BOOST
+            boost = effective_lt_boost
             boosted_scores.append(score + boost)
             boost_flags.append(True)
             boost_reasons.append(cat_slug or cat_name)
@@ -371,28 +386,34 @@ def apply_long_term_boost(
             boost_flags.append(False)
             boost_reasons.append("")
 
-    # Re-rank by boosted score (descending).
-    # With a small fixed boost of +0.10, items naturally move at most a few
-    # positions in typical distributions, matching the session reranker pattern.
-    scored = sorted(
-        zip(boosted_scores, candidates, boost_flags, boost_reasons),
-        key=lambda x: x[0],
-        reverse=True,
-    )
+    # Re-rank by boosted score (descending) with bounded position shift
+    ranked = list(zip(range(len(candidates)), boosted_scores, candidates, boost_flags, boost_reasons))
+    ranked.sort(key=lambda x: x[1], reverse=True)
 
-    reranked_candidates = [r[1] for r in scored]
-    reranked_scores = [r[0] for r in scored]
-    boosted_flags_final = [r[2] for r in scored]
-    reasons_final = [r[3] for r in scored]
+    constrained = []
+    for new_pos, (orig_pos, score, cand, flag, reason) in enumerate(ranked):
+        position_shift = abs(new_pos - orig_pos)
+        if position_shift > max_lt_position_shift:
+            clamped_pos = orig_pos + (max_lt_position_shift if new_pos > orig_pos else -max_lt_position_shift)
+            constrained.append((clamped_pos, score, cand, flag, reason))
+        else:
+            constrained.append((new_pos, score, cand, flag, reason))
+
+    constrained.sort(key=lambda x: x[0])
+
+    reranked_candidates = [c[2] for c in constrained]
+    reranked_scores = [c[1] for c in constrained]
+    boosted_flags_final = [c[3] for c in constrained]
+    reasons_final = [c[4] for c in constrained]
 
     items_boosted = sum(1 for f in boosted_flags_final if f)
     matched_categories = list(dict.fromkeys(r for r in reasons_final if r))  # dedup + preserve order
-    max_boost = _MAX_LT_BOOST if items_boosted > 0 else 0.0
+    max_boost = effective_lt_boost if items_boosted > 0 else 0.0
 
     # Build boost_map for use by routes.py
     boost_map = {}
     for cand, is_b, reason in zip(reranked_candidates, boosted_flags_final, reasons_final):
-        entry = {"is_boosted": is_b, "boost": _MAX_LT_BOOST if is_b else 0.0, "reason": reason}
+        entry = {"is_boosted": is_b, "boost": effective_lt_boost if is_b else 0.0, "reason": reason}
         boost_map[cand] = entry
         boost_map[str(cand)] = entry
 
