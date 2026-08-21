@@ -11,7 +11,7 @@ Why database query:
 - Confidence scores filter low-quality mappings
 - Allows A/B testing different mapping strategies
 """
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union, Tuple
 from uuid import UUID
 import asyncpg
 from app.core.config import settings
@@ -261,6 +261,67 @@ class LatentMapper:
             )
             return []
     
+    async def get_latent_id_for_product(
+        self,
+        product_id: Optional[Union[str, UUID]],
+        confidence_threshold: Optional[float] = None
+    ) -> Optional[int]:
+        """
+        Reverse-map a catalog product UUID to its RetailRocket latent_item_id.
+        
+        Args:
+            product_id: Catalog product UUID (str or UUID object)
+            confidence_threshold: Minimum confidence score (default from config)
+            
+        Returns:
+            RetailRocket integer item ID, or None if unmapped or below threshold.
+        """
+        if self.pool is None:
+            await self.connect()
+
+        if product_id is None:
+            return None
+
+        # Convert to UUID object
+        try:
+            uuid_val = UUID(str(product_id)) if isinstance(product_id, str) else product_id
+        except (ValueError, TypeError, AttributeError):
+            logger.warning("Invalid product UUID format for reverse mapping: %s", product_id)
+            return None
+
+        confidence_threshold = confidence_threshold or settings.confidence_threshold
+
+        try:
+            async with self.pool.acquire() as conn:
+                query = """
+                    SELECT latent_item_id
+                    FROM latent_item_mappings
+                    WHERE product_id = $1
+                      AND confidence_score >= $2
+                    ORDER BY confidence_score DESC
+                    LIMIT 1
+                """
+                row = await conn.fetchrow(query, uuid_val, confidence_threshold)
+                if row:
+                    latent_id = row['latent_item_id']
+                    logger.info(
+                        "Reverse mapped product UUID %s -> RetailRocket ID %s | threshold=%s",
+                        uuid_val,
+                        latent_id,
+                        confidence_threshold,
+                    )
+                    return latent_id
+                else:
+                    logger.info(
+                        "No latent mapping found for product UUID %s | threshold=%s",
+                        uuid_val,
+                        confidence_threshold,
+                    )
+                    return None
+        except Exception:
+            logger.exception("Failed to reverse-map product UUID %s", product_id)
+            return None
+
     async def close(self):
         """Close database connection pool."""
         if self.pool:

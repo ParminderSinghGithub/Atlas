@@ -134,3 +134,5 @@ notebooks/artifacts/models/production_v1/svd_model.pkl
 # -------------------------
 venv-tests/
 tools/amazon-integration/venv/
+
+.oci-deploy

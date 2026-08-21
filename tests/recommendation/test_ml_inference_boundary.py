@@ -373,6 +373,208 @@ class TestRecommendationRouteWithExternalML(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.recommendations[0].product_id, fake_uuid)
 
 
+    async def test_route_product_id_numeric_calls_external_ml(self):
+        """When product_id is a numeric string or integer, it is passed directly to external ML."""
+        from app.api.routes import get_recommendations
+
+        fake_uuid = uuid4()
+        mock_inference_response = InferenceResponse(
+            status="success",
+            items=[InferredItem(item_id=2001, score=0.92)],
+            strategy_used="two_stage_item_sim_lgbm",
+            model_version="production_v1"
+        )
+
+        mock_client = AsyncMock()
+        mock_client.infer = AsyncMock(return_value=mock_inference_response)
+
+        mock_mapper = AsyncMock()
+        mock_mapper.map_to_catalog = AsyncMock(return_value=[(fake_uuid, 2001)])
+
+        mock_metadata = {
+            fake_uuid: {"name": "Similar Product", "price": 19.99, "category_name": "Electronics"}
+        }
+
+        with patch("app.api.routes.settings.ml_inference_enabled", True), \
+             patch("app.api.routes.settings.ml_inference_url", "http://mock-ml:8001"), \
+             patch("app.api.routes.get_inference_client", return_value=mock_client), \
+             patch("app.api.routes.get_latent_mapper", return_value=mock_mapper), \
+             patch("app.api.routes.fetch_product_metadata", AsyncMock(return_value=mock_metadata)), \
+             patch("app.api.routes.apply_all_rules", AsyncMock(return_value=[fake_uuid])):
+
+            response = await get_recommendations(product_id="445351", k=8)
+
+        mock_client.infer.assert_called_once_with(
+            user_id=None,
+            item_id=445351,
+            k=settings.candidate_pool_size,
+            model_version=getattr(settings, "model_version", None)
+        )
+        self.assertEqual(response.strategy_used, "two_stage_item_sim_lgbm")
+        self.assertEqual(len(response.recommendations), 1)
+
+    async def test_route_product_id_catalog_uuid_reverse_maps_and_calls_external_ml(self):
+        """When product_id is a catalog UUID, it is reverse-mapped to latent_item_id before calling external ML."""
+        from app.api.routes import get_recommendations
+        from uuid import UUID
+
+        catalog_uuid = UUID("0d9d2060-38a5-55ef-9b70-a51baa2947f4")
+        rec_uuid = uuid4()
+
+        mock_inference_response = InferenceResponse(
+            status="success",
+            items=[InferredItem(item_id=12345, score=0.91)],
+            strategy_used="two_stage_item_sim_lgbm",
+            model_version="production_v1"
+        )
+
+        mock_client = AsyncMock()
+        mock_client.infer = AsyncMock(return_value=mock_inference_response)
+
+        mock_mapper = AsyncMock()
+        mock_mapper.get_latent_id_for_product = AsyncMock(return_value=445351)
+        mock_mapper.map_to_catalog = AsyncMock(return_value=[(rec_uuid, 12345)])
+
+        mock_metadata = {
+            rec_uuid: {"name": "Recommended Product", "price": 49.99, "category_name": "Gadgets"}
+        }
+
+        with patch("app.api.routes.settings.ml_inference_enabled", True), \
+             patch("app.api.routes.settings.ml_inference_url", "http://mock-ml:8001"), \
+             patch("app.api.routes.get_inference_client", return_value=mock_client), \
+             patch("app.api.routes.get_latent_mapper", return_value=mock_mapper), \
+             patch("app.api.routes.fetch_product_metadata", AsyncMock(return_value=mock_metadata)), \
+             patch("app.api.routes.apply_all_rules", AsyncMock(return_value=[rec_uuid])):
+
+            response = await get_recommendations(product_id=catalog_uuid, k=8)
+
+        mock_mapper.get_latent_id_for_product.assert_called_once_with(catalog_uuid)
+        mock_client.infer.assert_called_once_with(
+            user_id=None,
+            item_id=445351,
+            k=settings.candidate_pool_size,
+            model_version=getattr(settings, "model_version", None)
+        )
+        self.assertEqual(response.strategy_used, "two_stage_item_sim_lgbm")
+        self.assertEqual(len(response.recommendations), 1)
+
+    async def test_route_product_id_unmapped_uuid_falls_back_safely(self):
+        """When catalog UUID has no latent mapping, external ML receives item_id=None and falls back safely."""
+        from app.api.routes import get_recommendations
+        from uuid import UUID
+
+        unmapped_uuid = UUID("11111111-2222-3333-4444-555555555555")
+        rec_uuid = uuid4()
+
+        # External ML returns cold start when item_id is None
+        mock_inference_response = InferenceResponse(
+            status="cold_start",
+            items=[],
+            strategy_used="empty_context",
+            model_version="production_v1"
+        )
+
+        mock_client = AsyncMock()
+        mock_client.infer = AsyncMock(return_value=mock_inference_response)
+
+        mock_mapper = AsyncMock()
+        mock_mapper.get_latent_id_for_product = AsyncMock(return_value=None)
+        mock_mapper.map_to_catalog = AsyncMock(return_value=[(rec_uuid, 9999)])
+        mock_mapper.get_valid_latent_ids = AsyncMock(return_value=[9999])
+
+        mock_metadata = {
+            rec_uuid: {"name": "Popular Product", "price": 15.00, "category_name": "General"}
+        }
+
+        local_candidates = ("popularity", [(9999, 0.4)])
+
+        with patch("app.api.routes.settings.ml_inference_enabled", True), \
+             patch("app.api.routes.settings.ml_inference_url", "http://mock-ml:8001"), \
+             patch("app.api.routes.get_inference_client", return_value=mock_client), \
+             patch("app.api.routes.get_latent_mapper", return_value=mock_mapper), \
+             patch("app.api.routes.generate_candidates", AsyncMock(return_value=local_candidates)), \
+             patch("app.api.routes.fetch_product_metadata", AsyncMock(return_value=mock_metadata)), \
+             patch("app.api.routes.apply_all_rules", AsyncMock(return_value=[rec_uuid])):
+
+            response = await get_recommendations(product_id=unmapped_uuid, k=8)
+
+        mock_mapper.get_latent_id_for_product.assert_called_once_with(unmapped_uuid)
+        mock_client.infer.assert_called_once_with(
+            user_id=None,
+            item_id=None,
+            k=settings.candidate_pool_size,
+            model_version=getattr(settings, "model_version", None)
+        )
+        self.assertTrue("popularity" in response.strategy_used)
+        self.assertEqual(len(response.recommendations), 1)
+
+
+class TestReverseLatentMapping(unittest.IsolatedAsyncioTestCase):
+    """Test LatentMapper reverse lookup method."""
+
+    async def test_get_latent_id_for_product_success(self):
+        from app.mapping.latent_mapper import LatentMapper
+        from uuid import UUID
+
+        mapper = LatentMapper()
+        mock_pool = MagicMock()
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(return_value={"latent_item_id": 445351})
+
+        # Mock pool.acquire context manager
+        mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+        mock_pool.acquire.return_value.__aexit__.return_value = None
+        mapper.pool = mock_pool
+
+        test_uuid = UUID("0d9d2060-38a5-55ef-9b70-a51baa2947f4")
+        latent_id = await mapper.get_latent_id_for_product(test_uuid)
+
+        self.assertEqual(latent_id, 445351)
+        mock_conn.fetchrow.assert_called_once()
+
+    async def test_get_latent_id_for_product_string_uuid(self):
+        from app.mapping.latent_mapper import LatentMapper
+        from uuid import UUID
+
+        mapper = LatentMapper()
+        mock_pool = MagicMock()
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(return_value={"latent_item_id": 445351})
+
+        mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+        mock_pool.acquire.return_value.__aexit__.return_value = None
+        mapper.pool = mock_pool
+
+        latent_id = await mapper.get_latent_id_for_product("0d9d2060-38a5-55ef-9b70-a51baa2947f4")
+
+        self.assertEqual(latent_id, 445351)
+
+    async def test_get_latent_id_for_product_unmapped_returns_none(self):
+        from app.mapping.latent_mapper import LatentMapper
+        from uuid import UUID
+
+        mapper = LatentMapper()
+        mock_pool = MagicMock()
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+
+        mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+        mock_pool.acquire.return_value.__aexit__.return_value = None
+        mapper.pool = mock_pool
+
+        latent_id = await mapper.get_latent_id_for_product(UUID("11111111-2222-3333-4444-555555555555"))
+        self.assertIsNone(latent_id)
+
+    async def test_get_latent_id_for_product_invalid_uuid_returns_none(self):
+        from app.mapping.latent_mapper import LatentMapper
+
+        mapper = LatentMapper()
+        mapper.pool = MagicMock()
+
+        self.assertIsNone(await mapper.get_latent_id_for_product("invalid-uuid-string"))
+        self.assertIsNone(await mapper.get_latent_id_for_product(None))
+
+
 def run_tests():
     """Run test suite."""
     loader = unittest.TestLoader()
@@ -380,6 +582,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestMLInferenceSchemas))
     suite.addTests(loader.loadTestsFromTestCase(TestMLInferenceClient))
     suite.addTests(loader.loadTestsFromTestCase(TestRecommendationRouteWithExternalML))
+    suite.addTests(loader.loadTestsFromTestCase(TestReverseLatentMapping))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

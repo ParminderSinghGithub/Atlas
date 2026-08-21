@@ -196,12 +196,19 @@ async def get_recommendations(
         include_metadata,
     )
     
+    # Normalize inputs (handles Query default objects if called directly in unit tests)
+    clean_user_id = str(user_id) if isinstance(user_id, (str, int)) and not hasattr(user_id, "default") else None
+    clean_product_id = product_id if isinstance(product_id, (str, int, UUID)) and not hasattr(product_id, "default") else None
+
     # Validation: At least one of user_id or product_id required
-    if user_id is None and product_id is None:
+    if clean_user_id is None and clean_product_id is None:
         raise HTTPException(
             status_code=400,
             detail="At least one of user_id or product_id must be provided"
         )
+    
+    user_id = clean_user_id
+    product_id = clean_product_id
     
     try:
         logger.info("Resolved catalog metadata base URL: %s", get_catalog_service_url())
@@ -215,6 +222,15 @@ async def get_recommendations(
                 if product_id is not None:
                     if isinstance(product_id, (int, str)) and str(product_id).isdigit():
                         retailrocket_item_id = int(product_id)
+                        logger.info("Using direct numeric item ID for external ML: %s", retailrocket_item_id)
+                    else:
+                        mapper = get_latent_mapper()
+                        retailrocket_item_id = await mapper.get_latent_id_for_product(product_id)
+                        logger.info(
+                            "Reverse-mapped product UUID %s -> RetailRocket ID %s for external ML",
+                            product_id,
+                            retailrocket_item_id
+                        )
 
                 ext_resp = await inference_client.infer(
                     user_id=str(user_id) if user_id is not None else None,
@@ -649,7 +665,11 @@ async def generate_candidates(
         
         # Original similarity model attempt
         try:
-            retailrocket_id = int(product_id) if isinstance(product_id, (int, str)) and str(product_id).isdigit() else None
+            if isinstance(product_id, (int, str)) and str(product_id).isdigit():
+                retailrocket_id = int(product_id)
+            else:
+                mapper = get_latent_mapper()
+                retailrocket_id = await mapper.get_latent_id_for_product(product_id)
             
             if retailrocket_id:
                 similarity_model = get_similarity_model()
