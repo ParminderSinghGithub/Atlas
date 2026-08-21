@@ -11,6 +11,7 @@ const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage').then((m
 const CartPage = lazy(() => import('./pages/CartPage').then((m) => ({ default: m.CartPage })));
 const LoginPage = lazy(() => import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import('./pages/RegisterPage').then((m) => ({ default: m.RegisterPage })));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })));
 
 function PageLoader() {
   return (
@@ -31,6 +32,8 @@ function App() {
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
+                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/reset-password" element={<ForgotPasswordPage />} />
                 
                 <Route path="/" element={<HomePage />} />
                 <Route path="/products" element={<ProductListPage />} />
@@ -57,4 +60,3 @@ function App() {
 }
 
 export default App;
-
