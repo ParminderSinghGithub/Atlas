@@ -2,11 +2,11 @@
 
 ## 1. Architectural Motivation
 
-Atlas is deployed as a microservices architecture on Render, where the `recommendation-service` operates under strict resource constraints (512 MB memory limit on basic tiers). The full recommendation pipeline combines:
-1. **Recall Layer**: SVD Collaborative Filtering (165 MB pickle, ~125 MB RAM resident) and Item-Item Similarity (10 MB pickle, ~30 MB RAM resident).
-2. **Feature Store / Precision Layer**: User & Item parquet feature tables (35 MB on disk, ~80 MB RAM resident) and LightGBM Ranker (350 KB).
+Atlas is deployed as a distributed microservices architecture, where the `recommendation-service` on Render operates under resource constraints while orchestrating business logic and metadata hydration. The full recommendation pipeline combines:
+1. **Recall Layer**: Item-Item Co-visitation Similarity (132K items, 317K pairs) and SVD Collaborative Filtering (offline matrix factorization).
+2. **Feature Store / Precision Layer**: User & Item parquet feature stores (1.4M users, 235K items, 16 features) and LightGBM LambdaRank Precision Ranker.
 
-To avoid out-of-memory (OOM) failures on Render while restoring the full two-stage ML pipeline (SVD/Similarity → LightGBM), Atlas establishes a clean, decoupled software boundary for external ML inference (e.g. Hugging Face Spaces).
+To ensure high performance and eliminate memory bottlenecks, Atlas establishes a dedicated **External ML Inference Engine** deployed on an **Oracle Cloud Infrastructure (OCI)** host (`http://150.230.143.133:8001`).
 
 ---
 
@@ -24,16 +24,18 @@ The platform cleanly separates domain/business orchestration from compute-heavy 
 │  - Product Catalog Metadata Hydration                  │
 │  - Decisioning Rules (Diversity, Deduplication, Stock) │
 │  - Intent-Aware Session Re-ranking (Upstash Redis)     │
-│  - Fail-Safe Local Pipeline Fallback                   │
+│  - 90-Day Long-Term User Preferences (PostgreSQL)      │
+│  - Fail-Safe Fallback Handling                         │
 └──────────────────────────┬─────────────────────────────┘
-                           │ POST /infer (Single HTTP Request)
+                           │ POST /api/v1/infer (REST)
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│           External ML Service (e.g. HF Space)          │
-│  - SVD Model Factor Multiplications (User Vectors)     │
+│        OCI ML Inference Host (150.230.143.133:8001)    │
 │  - Item-Item Sparse Similarity Matrix Lookups          │
 │  - Feature Extraction (User & Item Parquet Tables)     │
-│  - LightGBM LambdaRank Precision Scoring               │
+│  - LightGBM LambdaRank Precision Scoring (16 Features) │
+│  - SVD Matrix Factorization (Swagger Exploration)      │
+│  - SHA-256 Artifact Integrity Verification             │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -41,11 +43,14 @@ The platform cleanly separates domain/business orchestration from compute-heavy 
 
 ## 3. API Contract Specification
 
-### 3.1 Inference Endpoint
+### 3.1 Live Service Endpoints
 
-- **Method**: `POST`
-- **Path**: `/infer`
-- **Content-Type**: `application/json`
+- **Inference Host**: `http://150.230.143.133:8001`
+- **Inference Path**: `POST /api/v1/infer` (or `POST /infer`)
+- **Health Check**: `GET /health`
+- **Readiness Probe**: `GET /ready`
+- **Artifact Metadata**: `GET /metadata`
+- **Swagger UI**: `http://150.230.143.133:8001/docs`
 
 ### 3.2 Request Schema (`InferenceRequest`)
 

@@ -17,37 +17,45 @@
 
 ---
 
-### High-Level Architecture
-
-### Active Production Architecture (Render + Vercel)
+### Active Production Architecture (Vercel + Render + OCI + Neon + Upstash)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                          USERS (Web Browser)                            │
+│                          USERS (Web Browser)                           │
 │                  https://atlas-six-roan.vercel.app/                    │
 └─────────────────────────────────┬──────────────────────────────────────┘
                                   │ HTTPS (TLS 1.3)
                                   ▼
                     ┌─────────────────────────────┐
                     │      Frontend (Vercel)      │
-                    │       (React / Vite)        │
+                    │   (React 18 / Vite / SPA)   │
                     └──────────────┬──────────────┘
                                    │ HTTPS (REST API)
                                    ▼
                     ┌─────────────────────────────┐
                     │     API Gateway (Render)    │
-                    │          (FastAPI)          │
+                    │   (FastAPI Gateway Proxy)   │
+                    │   • Coordinated Readiness   │
                     └──────────────┬──────────────┘
                                    │
             ┌──────────────────────┼──────────────────────┐
             ▼                      ▼                      ▼
   ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
   │   User Service   │   │ Catalog Service  │   │ Recommendation   │
-  │ (FastAPI / Render)│   │(FastAPI / Render)│   │ Service (Render) │
-  │ • Auth (JWT)     │   │ • Products       │   │ • SVD Candidate  │
-  │ • User CRUD      │   │ • Categories     │   │ • LightGBM       │
-  └────────┬─────────┘   │ • Mappings       │   │ • Session Boost  │
-           │             └────────┬─────────┘   └────────┬─────────┘
+  │(FastAPI / Render)│   │(FastAPI / Render)│   │ Service (Render) │
+  │ • Auth (JWT)     │   │ • Products       │   │ • Candidate Recall
+  │ • OTP Password   │   │ • Categories     │   │ • Session Boost  │
+  │ • Resend / SMTP  │   │ • Event Logging  │   │ • 90d User Profile│
+  └────────┬─────────┘   └────────┬─────────┘   └────────┬─────────┘
+           │                      │                      │
+           │                      │                      │ (HTTP REST /infer)
+           │                      │                      ▼
+           │                      │             ┌──────────────────┐
+           │                      │             │ OCI ML Inference │
+           │                      │             │ Host (:8001)     │
+           │                      │             │ • Item-Item Sim  │
+           │                      │             │ • LightGBM 16-Feat│
+           │                      │             └──────────────────┘
            │                      │                      │
            └──────────────────────┼──────────────────────┘
                                   ▼
@@ -497,99 +505,125 @@ const api = axios.create({
 
 ### 2. API Gateway (FastAPI)
 
-**Purpose**: Reverse proxy and routing layer
+**Purpose**: Unified entry point, reverse proxy, readiness coordinator, and CORS routing layer
 
-**Routes**:
+**Routes & Proxies**:
 ```python
 # app/main.py
-app.include_router(auth_router, prefix="/api/v1/auth")
-app.include_router(catalog_router, prefix="/api/v1/catalog")
-app.include_router(recommendation_router, prefix="/api/v1/recommendations")
+# Downstream Proxies:
+# /api/auth/{path:path} & /api/v1/auth/{path:path}  → user-service
+# /api/v1/catalog/{path:path}                     → catalog-service
+# /api/v1/products{path:path}                     → catalog-service
+# /api/v1/categories{path:path}                   → catalog-service
+# /api/v1/recommendations                         → recommendation-service
+# /api/events, /api/v1/events, /events            → catalog-service
 
-# Proxies to:
-# /api/v1/auth/* → user-service:5000
-# /api/v1/catalog/* → catalog-service:5004
-# /api/v1/recommendations/* → recommendation-service:5005
+# Coordinated Gateway Health & Readiness:
+# GET /health                                     → Gateway process health
+# GET /api/v1/ready                               → Deep probe of all downstream dependencies
 ```
 
-**Why Gateway?**:
-- **Single Entry Point**: Frontend only knows one URL
-- **Cross-Cutting Concerns**: Can add rate limiting, logging, auth middleware
-- **Service Isolation**: Backend services don't need public IPs
-- **Future Flexibility**: Can add GraphQL, gRPC, WebSocket support
+**Key Responsibilities**:
+- **Single Public Entry Point**: Single CORS origin and SSL termination
+- **Readiness Orchestration**: 45.0s probe timeout with cache to safely coordinate container cold starts
+- **Service Isolation**: Downstream microservices operate without public ingress exposure
 
 ---
 
-### 3. User Service (FastAPI)
+### 3. User & Auth Service (FastAPI)
 
-**Purpose**: Authentication and user management
+**Purpose**: Authentication, JWT session token generation, and OTP password recovery
 
 **Key Features**:
-- JWT token generation (HS256 algorithm)
+- JWT authentication (HS256 algorithm with expiration)
 - Password hashing (bcrypt, 12 rounds)
-- Token validation middleware
-- User CRUD operations
+- Single-use 6-digit numeric OTP password recovery (15-minute expiration)
+- Transactional email dispatch via **Resend REST API** with standard **SMTP SSL/STARTTLS** fallback
+- User profile CRUD
 
 **Endpoints**:
 ```
-POST /register - Create new user
-POST /login - Authenticate and get JWT
-GET /me - Get current user info (requires token)
-PUT /profile - Update user profile
+POST /api/auth/register            - Create new user account
+POST /api/auth/login               - Authenticate credentials and issue JWT
+GET  /api/auth/me                  - Retrieve authenticated user profile (Bearer token)
+POST /api/auth/forgot-password     - Generate single-use OTP and trigger email delivery
+POST /api/auth/verify-reset-code   - Verify 6-digit OTP validity
+POST /api/auth/reset-password      - Update password using verified OTP token
+GET  /api/auth/ping                - Service liveness probe
 ```
 
-**Database**: PostgreSQL `users` table
+**Database**: PostgreSQL `users` table, `password_resets` table
 
 ---
 
 ### 4. Catalog Service (FastAPI)
 
-**Purpose**: Product and category management
+**Purpose**: Product management, category navigation, and user interaction event logging
 
 **Key Features**:
-- Product listing with pagination (cursor-based)
-- Category hierarchy support
-- Price conversion (USD → INR, rate: 83.0)
-- Latent mapping lookup for ML integration
+- Product listing with category filtering and cursor pagination
+- Multi-category hierarchy navigation
+- Real-time user event ingestion (`view`, `click`, `add_to_cart`, `purchase`)
+- Latent item mapping resolution (`latent_item_mappings`)
 
 **Endpoints**:
 ```
-GET /products - List products (with filters, pagination)
-GET /products/:id - Get product details
-GET /categories - List categories
-GET /categories/:slug/products - Products by category
-GET /mappings/:latent_id - Map RetailRocket ID → Atlas UUID
+GET  /products                 - List products with category/limit filtering
+GET  /products/:id             - Retrieve detailed product metadata
+GET  /categories               - List all product categories
+GET  /categories/:slug/products- Filter products by category slug
+POST /events                   - Ingest user interaction events into PostgreSQL
+GET  /mappings/:latent_id      - Map RetailRocket integer ID to Atlas product UUID
+GET  /health                   - Service health probe
 ```
 
-**Database**: PostgreSQL `products`, `categories`, `latent_item_mappings`
+**Database**: PostgreSQL `products`, `categories`, `events`, `latent_item_mappings`
 
 ---
 
-### 5. Recommendation Service (FastAPI + ML)
+### 5. Recommendation Service (FastAPI)
 
-**Purpose**: ML-powered product recommendations
+**Purpose**: Multi-strategy candidate recall, session intent re-ranking, and user personalization
 
 **Key Features**:
-- Three-strategy candidate generation (SVD, similarity, popularity)
-- LightGBM ranking for precision
-- Session-aware reranking
-- Model warm-up on startup (optional)
+- Candidate Generation: Content/Item similarity (via OCI host), category similarity, and popularity baseline
+- External ML Delegation: Calls OCI ML Inference Engine (`POST /api/v1/infer`)
+- Real-Time Session Intent Re-Ranking: Dynamic Upstash Redis intent boost (+0.35 to +0.60 $\times$ `score_span`, capped position shift)
+- Long-Term Personalization: Neon PostgreSQL 90-day category preference profile (+0.10 $\times$ `score_span`, 1-hour Redis cache)
+- Graceful Degradation: Automatic fallback to local popularity or category similarity on timeouts (>2.0s)
 
 **Endpoints**:
 ```
-GET /recommendations - Get personalized recommendations
-    Query params: user_id, product_id, k (number of results)
-    
-POST /track_session - Update session data (view events)
-    Body: {user_id, product_id, event_type, metadata}
+GET  /recommendations          - Fetch personalized recommendations (user_id, product_id, k)
+POST /track_session            - Record real-time session interaction signals to Redis
+GET  /health                   - Service health probe
 ```
 
 **Dependencies**:
-- PostgreSQL (product metadata)
-- Redis (session data)
-- `/artifacts` volume (model files)
+- PostgreSQL (Catalog metadata & 90-day interaction events)
+- Upstash Redis (Session signals & long-term preference cache)
+- OCI ML Inference Engine (`http://150.230.143.133:8001`)
 
-**Model Files** (mounted at `/artifacts`):
+---
+
+### 6. ML Inference Service (FastAPI on OCI Host)
+
+**Purpose**: High-performance remote ML model hosting and score calculation
+
+**Key Features**:
+- Item-Item Co-visitation Similarity Matrix (132K items, 317K pairs)
+- LightGBM LambdaRank Precision Ranker (16 behavioral features)
+- SVD Collaborative Filtering (offline matrix factorization exploration)
+- SHA-256 artifact integrity validation on startup
+
+**Endpoints**:
+```
+POST /api/v1/infer             - Execute two-stage inference (Item-Item Sim / LightGBM)
+POST /infer                    - Alternate inference endpoint path
+GET  /health                   - Process liveness probe
+GET  /ready                    - Model artifact loading readiness probe
+GET  /metadata                 - Model version and artifact SHA-256 signatures
+```
 ```
 /artifacts/
 ├── popularity_baseline.csv

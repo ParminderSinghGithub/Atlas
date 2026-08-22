@@ -17,42 +17,44 @@
 
 ## Overview
 
-Atlas implements a **two-stage recommendation pipeline** combining collaborative filtering with gradient boosting:
+Atlas implements a **multi-stage recommendation and personalization pipeline** combining candidate recall, gradient boosted ranking on a dedicated inference engine, real-time session intent re-ranking, and long-term user profiles:
 
 ```
-Stage 1: Candidate Generation (Recall)
-    ├─ Popularity Baseline (cold start)
-    ├─ Item-Item Similarity (content-based)
-    └─ SVD Collaborative Filtering (user-based, limited by cold-start)
+Stage 1: Candidate Generation (Recall Layer)
+    ├─ Item-Item Similarity (TF-IDF Co-visitation via OCI :8001)
+    ├─ Category Similarity (Product detail page fallback)
+    ├─ Popularity Baseline (Cold start / unknown user baseline)
+    └─ SVD Collaborative Filtering (Preserved in offline training & Swagger testing)
 
-Stage 2: LightGBM Ranking (Precision)
-    └─ Reranks candidates using 16 engineered features
+Stage 2: LightGBM Ranking (Precision Layer on OCI :8001)
+    └─ Re-ranks candidates using 16 engineered behavioral features (LambdaRank NDCG)
 
-Stage 3: Session Reranking (Optional)
-    └─ Boosts scores based on current session behavior
+Stage 3: Real-Time Session Intent Re-Ranking (Upstash Redis)
+    └─ Bounded dynamic score boost (+0.35 to +0.60 * score span) based on active browsing
+
+Stage 4: Long-Term User Personalization (Neon PostgreSQL)
+    └─ Category affinity boost (+0.10 * score span) calculated from 90-day event history
 ```
 
-### Deployment-Optimized Inference Mode (Active Production)
+### Production Inference Architecture (Render + OCI Host)
 
-The active cloud deployment runs a deployment-optimized inference mode for infrastructure efficiency:
+Atlas decouples domain orchestration from compute-intensive ML inference:
+- **Recommendation Service (Render)**: Validates requests, fetches active session state from Upstash Redis, computes long-term preference vectors from Neon PostgreSQL, orchestrates external ML calls, maps latent IDs to Amazon product UUIDs, and hydates catalog metadata.
+- **ML Inference Service (OCI Host `150.230.143.133:8001`)**: High-performance model host serving Item-Item Co-visitation Similarity and LightGBM Ranking over pre-computed User and Item Parquet feature stores.
+- **Fail-Safe Fallbacks**: If external ML inference times out (>2.0s) or encounters cold-start items, the pipeline automatically falls back to local category similarity or popularity baseline.
 
-- Popularity-based recommendation serving is the primary path.
-- Latent item mappings remain active via PostgreSQL.
-- Catalog metadata hydration remains active during serving.
-- Feature-table loading is disabled in constrained cloud mode.
-- Similarity model loading is disabled in constrained cloud mode.
-- SVD remains optional and fallback-safe.
-- LightGBM ranking is disabled when feature tables are disabled.
-
-This is an intentional deployment strategy, not a model failure. The full pipeline remains available in local/full-capacity environments.
+### SVD Collaborative Filtering Status (Offline vs. Serving)
+- **Offline Training**: SVD matrix factorization (10 latent factors) trained on 2.7M RetailRocket events is fully operational in the offline training pipeline (`training/train_candidates.py`).
+- **Interactive Swagger Exploration**: Direct ML testing with RetailRocket integer IDs (e.g. `359491`) is supported via the OCI ML Swagger UI.
+- **Production Serving Guard**: SVD serving is intentionally bypassed in the normal frontend recommendation path because live Atlas user UUIDs do not exist in the historical RetailRocket integer user ID space, preventing cold-start prediction degradation.
 
 ### Key Architectural Decision
 
 **Training Data ≠ Production Data**
 
 - **Training**: RetailRocket dataset (2.7M events, 1.4M users, 235K items)
-- **Production**: Amazon product catalog (2K curated products)
-- **Bridge**: `latent_item_mappings` table maps RetailRocket IDs → Atlas UUIDs
+- **Production**: Amazon product catalog (2K curated products across 4 categories)
+- **Bridge**: `latent_item_mappings` table maps RetailRocket integer IDs → Atlas UUIDs
 
 This separation allows:
 - [✓] Training on real user behavior patterns

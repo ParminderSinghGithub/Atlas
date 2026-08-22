@@ -16,8 +16,8 @@
 1. [Local Development](#local-development)
 2. [Docker Compose Setup](#docker-compose-setup)
 3. [Kubernetes Local Testing](#kubernetes-local-testing)
-4. [Azure AKS Deployment](#azure-aks-deployment)
-5. [HTTPS with Let's Encrypt](#https-with-lets-encrypt)
+4. [Azure AKS Deployment (Historical Evidence)](#azure-aks-deployment-historical-evidence)
+5. [HTTPS with Let's Encrypt (Historical AKS Ingress)](#https-with-lets-encrypt-historical-aks-ingress)
 6. [Monitoring and Maintenance](#monitoring-and-maintenance)
 
 ---
@@ -389,7 +389,7 @@ kubectl exec -n atlas deployment/catalog-service -- python /app/scripts/seed_dat
 
 ---
 
-## HTTPS with Let's Encrypt
+## HTTPS with Let's Encrypt (Historical AKS Ingress)
 
 ### Step 1: Install cert-manager
 
