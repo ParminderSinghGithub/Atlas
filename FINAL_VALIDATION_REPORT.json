@@ -1,33 +1,33 @@
 {
-  "timestamp": "2026-08-22T11:43:44.886281+00:00",
+  "timestamp": "2026-08-22T11:59:21.214935+00:00",
   "platform": "Atlas E-Commerce & Recommendation Platform",
   "version": "2.0.0",
   "total_suites": 6,
   "passed_suites": 6,
   "failed_suites": 0,
-  "total_duration_seconds": 32.1,
+  "total_duration_seconds": 27.1,
   "results": [
     {
       "name": "Recommendation & Personalization Suite (82 tests)",
       "command": "C:\\Users\\parmi\\AppData\\Local\\Programs\\Python\\Python312\\python.exe -m unittest discover -s tests/recommendation",
       "exit_code": 0,
-      "duration_seconds": 12.489,
+      "duration_seconds": 10.369,
       "success": true,
-      "output_summary": ".reranker |   Products viewed: 0\n2026-08-22 17:13:24 | INFO     | app.session.reranker |   [OK] Re-ranking complete: 1 items boosted\n2026-08-22 17:13:24 | INFO     | app.session.reranker | Applying session re-ranking: user=user_b\n2026-08-22 17:13:24 | INFO     | app.session.reranker |   Categories viewed: {'target_cat'}\n2026-08-22 17:13:24 | INFO     | app.session.reranker |   Products viewed: 0\n2026-08-22 17:13:24 | INFO     | app.session.reranker |   [OK] Re-ranking complete: 10 items boosted\n"
+      "output_summary": ".reranker |   Products viewed: 0\n2026-08-22 17:29:04 | INFO     | app.session.reranker |   [OK] Re-ranking complete: 1 items boosted\n2026-08-22 17:29:04 | INFO     | app.session.reranker | Applying session re-ranking: user=user_b\n2026-08-22 17:29:04 | INFO     | app.session.reranker |   Categories viewed: {'target_cat'}\n2026-08-22 17:29:04 | INFO     | app.session.reranker |   Products viewed: 0\n2026-08-22 17:29:04 | INFO     | app.session.reranker |   [OK] Re-ranking complete: 10 items boosted\n"
     },
     {
       "name": "User Authentication & Recovery Suite (5 tests)",
       "command": "C:\\Projects\\P1\\services\\catalog-service\\venv\\Scripts\\python.exe -m unittest tests/auth/test_user_service_unit.py",
       "exit_code": 0,
-      "duration_seconds": 3.339,
+      "duration_seconds": 2.759,
       "success": true,
-      "output_summary": "\n>>> [EMAIL/OTP SERVICE] Password reset code for bob@example.com: 399758 (Expires in 15m) <<<\n\n"
+      "output_summary": "\n>>> [EMAIL/OTP SERVICE] Password reset code for bob@example.com: 165173 (Expires in 15m) <<<\n\n"
     },
     {
       "name": "Session Boost & Personalization Tuning Dynamics",
       "command": "C:\\Users\\parmi\\AppData\\Local\\Programs\\Python\\Python312\\python.exe -m unittest tests/recommendation/test_session_boost_tuning.py",
       "exit_code": 0,
-      "duration_seconds": 0.405,
+      "duration_seconds": 0.402,
       "success": true,
       "output_summary": ""
     },
@@ -35,13 +35,13 @@
       "name": "API Gateway Readiness Coordinator & Catalog Proxy Suite (8 tests)",
       "command": "C:\\Users\\parmi\\AppData\\Local\\Programs\\Python\\Python312\\python.exe -m unittest tests/gateway/test_readiness_and_catalog_unit.py",
       "exit_code": 0,
-      "duration_seconds": 1.53,
+      "duration_seconds": 1.261,
       "success": true,
       "output_summary": ""
     },
     {
       "name": "FastAPI OpenAPI Schemas",
-      "duration_seconds": 5.489,
+      "duration_seconds": 5.012,
       "success": true,
       "services": {
         "api-gateway": {
@@ -70,9 +70,9 @@
       "name": "Frontend Production Build & Typecheck (Vite + TS)",
       "command": "npm.cmd run build",
       "exit_code": 0,
-      "duration_seconds": 8.84,
+      "duration_seconds": 7.292,
       "success": true,
-      "output_summary": "e-C0sNPcpY.js               \u001b[39m\u001b[1m\u001b[2m  7.09 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  2.46 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/ForgotPasswordPage-JmjjVOUi.js     \u001b[39m\u001b[1m\u001b[2m  7.61 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  2.15 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/ProductDetailPage-w7Qe_ZU-.js      \u001b[39m\u001b[1m\u001b[2m 11.26 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  3.93 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/index-CFZ32uIA.js                  \u001b[39m\u001b[1m\u001b[2m283.87 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip: 93.44 kB\u001b[22m\n\u001b[32m\u00e2\u0153\u201c built in 2.82s\u001b[39m\n"
+      "output_summary": "e-BvGlIoSs.js               \u001b[39m\u001b[1m\u001b[2m  7.09 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  2.46 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/ForgotPasswordPage-CzY4NrIk.js     \u001b[39m\u001b[1m\u001b[2m  7.61 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  2.15 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/ProductDetailPage-CYEEg_Hh.js      \u001b[39m\u001b[1m\u001b[2m 11.26 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  3.93 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/index-Cyz0fdzx.js                  \u001b[39m\u001b[1m\u001b[2m283.95 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip: 93.46 kB\u001b[22m\n\u001b[32m\u00e2\u0153\u201c built in 2.45s\u001b[39m\n"
     }
   ],
   "verdict": "GO"

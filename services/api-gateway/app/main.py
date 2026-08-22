@@ -215,7 +215,7 @@ async def system_readiness(force_refresh: bool = False):
         ml_url = settings.ML_INFERENCE_SERVICE_URL.rstrip("/")
 
         probes = [
-            ("catalog_service", "Catalog Service", f"{cat_url}/api/v1/health", True),
+            ("catalog_service", "Catalog Service", f"{cat_url}/api/v1/catalog/health", True),
             ("recommendation_service", "Recommendation Service", f"{rec_url}/health", True),
             ("user_service", "User Service", f"{user_url}/api/auth/ping", False),
             ("ml_inference_service", "ML Inference Engine", f"{ml_url}/health", False),
@@ -313,17 +313,21 @@ async def proxy_auth(path: str, request: Request):
 @app.api_route("/api/v1/products{path:path}", methods=["GET", "OPTIONS"], tags=["Catalog"])
 @app.api_route("/api/v1/categories{path:path}", methods=["GET", "OPTIONS"], tags=["Catalog"])
 async def proxy_catalog(request: Request, path: str = ""):
-    """Proxy all catalog and taxonomy requests to catalog-service (read-only)."""
+    """Proxy all catalog and taxonomy requests to catalog-service."""
     async with httpx.AsyncClient() as client:
         req_path = request.url.path
         if req_path.startswith("/api/v1/catalog/"):
             sub = req_path[len("/api/v1/catalog/"):]
-        elif req_path.startswith("/api/v1/"):
-            sub = req_path[len("/api/v1/"):]
+            url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/api/v1/catalog/{sub}"
+        elif req_path.startswith("/api/v1/products"):
+            sub = req_path[len("/api/v1/products"):]
+            url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/api/v1/catalog/products{sub}"
+        elif req_path.startswith("/api/v1/categories"):
+            sub = req_path[len("/api/v1/categories"):]
+            url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/api/v1/catalog/categories{sub}"
         else:
-            sub = path
+            url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/api/v1/catalog/{path}"
 
-        url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/api/v1/{sub}"
         headers = dict(request.headers)
         headers.pop("host", None)
         
@@ -402,11 +406,17 @@ async def proxy_session_track(request: Request):
 
 
 # ==================== EVENT INGESTION ROUTES ====================
+@app.api_route("/api/events/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], tags=["Events"])
+@app.api_route("/api/events", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], tags=["Events"])
+@app.api_route("/api/v1/events/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], tags=["Events"])
+@app.api_route("/api/v1/events", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], tags=["Events"])
 @app.api_route("/events/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], tags=["Events"])
-async def proxy_events_with_path(path: str, request: Request):
-    """Proxy all /events/* requests to catalog-service."""
+@app.api_route("/events", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], tags=["Events"])
+async def proxy_events(request: Request, path: str = ""):
+    """Proxy all event ingestion requests to catalog-service."""
     async with httpx.AsyncClient() as client:
-        url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/events/{path}"
+        target_path = f"/events/{path}" if path else "/events"
+        url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}{target_path}"
         headers = dict(request.headers)
         headers.pop("host", None)
         
@@ -425,28 +435,5 @@ async def proxy_events_with_path(path: str, request: Request):
             )
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
-
-
-@app.api_route("/events", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], tags=["Events"])
-async def proxy_events(request: Request):
-    """Proxy /events (without path) to catalog-service."""
-    async with httpx.AsyncClient() as client:
-        url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/events"
-        headers = dict(request.headers)
-        headers.pop("host", None)
-        
-        try:
-            body = await request.body()
-            response = await client.request(
-                method=request.method,
-                url=url,
-                content=body,
-                headers=headers,
-            )
-            return Response(
-                content=response.content,
-                status_code=response.status_code,
-                headers=dict(response.headers),
-            )
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)

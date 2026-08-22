@@ -121,14 +121,19 @@ export const ReadinessProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           markEstablished();
           return;
         } else if (data.status === 'degraded') {
-          // Catalog is ready, recommendation waking
-          setProgressPercent(100);
-          setReadinessState('DEGRADED');
-          markEstablished();
-          return;
+          // If in early attempts, give recommendation engine a brief chance to finish waking
+          if (attempt >= 3) {
+            setProgressPercent(100);
+            setReadinessState('DEGRADED');
+            markEstablished();
+            return;
+          } else {
+            setProgressPercent(Math.min(50 + attempt * 15, 90));
+            await new Promise((res) => setTimeout(res, 2500));
+          }
         } else if (data.status === 'warming_up') {
           // Continue polling
-          setProgressPercent(Math.min(45 + attempt * 12, 88));
+          setProgressPercent(Math.min(40 + attempt * 8, 88));
           await new Promise((res) => setTimeout(res, 3000));
         } else {
           // Wait and retry
