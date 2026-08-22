@@ -525,7 +525,7 @@ const api = axios.create({
 
 **Key Responsibilities**:
 - **Single Public Entry Point**: Single CORS origin and SSL termination
-- **Readiness Orchestration**: 45.0s probe timeout with cache to safely coordinate container cold starts
+- **Readiness Orchestration**: Deep multi-service health verification (`/api/v1/ready`) checking Catalog, User, Recommendation, and ML Inference Engine (OCI). Operates in tandem with the frontend pre-wakeup trigger (frontend triggers sleeping Render services from the browser, then Gateway authoritative readiness coordinator verifies health).
 - **Service Isolation**: Downstream microservices operate without public ingress exposure
 
 ---

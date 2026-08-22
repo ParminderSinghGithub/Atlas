@@ -106,6 +106,14 @@ export const ReadinessProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setReadinessState('WAKING_SERVICES');
     setProgressPercent(20);
 
+    // Trigger best-effort direct browser wakeup to sleeping Render services
+    // before entering authoritative API Gateway readiness polling
+    try {
+      await readinessService.triggerDirectWakeup();
+    } catch {
+      // Best-effort trigger; proceed directly to gateway readiness polling
+    }
+
     const maxAttempts = 8;
     let attempt = 0;
 

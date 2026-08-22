@@ -1,33 +1,33 @@
 {
-  "timestamp": "2026-08-22T19:51:14.477089+00:00",
+  "timestamp": "2026-08-22T20:15:43.102944+00:00",
   "platform": "Atlas E-Commerce & Recommendation Platform",
   "version": "2.0.0",
   "total_suites": 8,
   "passed_suites": 8,
   "failed_suites": 0,
-  "total_duration_seconds": 37.81,
+  "total_duration_seconds": 38.04,
   "results": [
     {
       "name": "Recommendation & Personalization Suite (82 tests)",
       "command": "C:\\Users\\parmi\\AppData\\Local\\Programs\\Python\\Python312\\python.exe -m unittest discover -s tests/recommendation",
       "exit_code": 0,
-      "duration_seconds": 11.639,
+      "duration_seconds": 11.929,
       "success": true,
-      "output_summary": ".reranker |   Products viewed: 0\n2026-08-23 01:20:47 | INFO     | app.session.reranker |   [OK] Re-ranking complete: 1 items boosted\n2026-08-23 01:20:47 | INFO     | app.session.reranker | Applying session re-ranking: user=user_b\n2026-08-23 01:20:47 | INFO     | app.session.reranker |   Categories viewed: {'target_cat'}\n2026-08-23 01:20:47 | INFO     | app.session.reranker |   Products viewed: 0\n2026-08-23 01:20:47 | INFO     | app.session.reranker |   [OK] Re-ranking complete: 10 items boosted\n"
+      "output_summary": ".reranker |   Products viewed: 0\n2026-08-23 01:45:16 | INFO     | app.session.reranker |   [OK] Re-ranking complete: 1 items boosted\n2026-08-23 01:45:16 | INFO     | app.session.reranker | Applying session re-ranking: user=user_b\n2026-08-23 01:45:16 | INFO     | app.session.reranker |   Categories viewed: {'target_cat'}\n2026-08-23 01:45:16 | INFO     | app.session.reranker |   Products viewed: 0\n2026-08-23 01:45:16 | INFO     | app.session.reranker |   [OK] Re-ranking complete: 10 items boosted\n"
     },
     {
       "name": "User Authentication & Recovery Suite (5 tests)",
       "command": "C:\\Projects\\P1\\services\\catalog-service\\venv\\Scripts\\python.exe -m unittest tests/auth/test_user_service_unit.py",
       "exit_code": 0,
-      "duration_seconds": 3.012,
+      "duration_seconds": 3.088,
       "success": true,
-      "output_summary": "\n>>> [EMAIL/OTP SERVICE (DEV)] Password reset code for test@example.com: 123456 (Expires in 15m) <<<\n\n\n>>> [EMAIL/OTP SERVICE (DEV)] Password reset code for bob@example.com: 609153 (Expires in 15m) <<<\n\n"
+      "output_summary": "\n>>> [EMAIL/OTP SERVICE (DEV)] Password reset code for test@example.com: 123456 (Expires in 15m) <<<\n\n\n>>> [EMAIL/OTP SERVICE (DEV)] Password reset code for bob@example.com: 117930 (Expires in 15m) <<<\n\n"
     },
     {
       "name": "Session Boost & Personalization Tuning Dynamics",
       "command": "C:\\Users\\parmi\\AppData\\Local\\Programs\\Python\\Python312\\python.exe -m unittest tests/recommendation/test_session_boost_tuning.py",
       "exit_code": 0,
-      "duration_seconds": 0.356,
+      "duration_seconds": 0.318,
       "success": true,
       "output_summary": ""
     },
@@ -35,7 +35,7 @@
       "name": "API Gateway Readiness Coordinator & Catalog Proxy Suite",
       "command": "C:\\Users\\parmi\\AppData\\Local\\Programs\\Python\\Python312\\python.exe -m unittest tests/gateway/test_readiness_and_catalog_unit.py",
       "exit_code": 0,
-      "duration_seconds": 1.322,
+      "duration_seconds": 1.717,
       "success": true,
       "output_summary": ""
     },
@@ -43,13 +43,13 @@
       "name": "API Gateway Readiness End-to-End Cold-Start Simulation Suite (6 tests)",
       "command": "C:\\Users\\parmi\\AppData\\Local\\Programs\\Python\\Python312\\python.exe -m unittest tests/gateway/test_readiness_end_to_end_simulation.py",
       "exit_code": 0,
-      "duration_seconds": 1.41,
+      "duration_seconds": 1.465,
       "success": true,
       "output_summary": ""
     },
     {
       "name": "FastAPI OpenAPI Schemas",
-      "duration_seconds": 4.851,
+      "duration_seconds": 5.182,
       "success": true,
       "services": {
         "api-gateway": {
@@ -78,17 +78,17 @@
       "name": "Frontend Production Build & Typecheck (Vite + TS)",
       "command": "npm.cmd run build",
       "exit_code": 0,
-      "duration_seconds": 7.969,
+      "duration_seconds": 7.276,
       "success": true,
-      "output_summary": "e-DpXB5fbQ.js               \u001b[39m\u001b[1m\u001b[2m  7.09 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  2.46 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/ForgotPasswordPage-DKT3WaMZ.js     \u001b[39m\u001b[1m\u001b[2m  8.60 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  2.49 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/ProductDetailPage-BvZYaSMj.js      \u001b[39m\u001b[1m\u001b[2m 11.42 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  4.03 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/index-BXHtDgxi.js                  \u001b[39m\u001b[1m\u001b[2m283.58 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip: 93.35 kB\u001b[22m\n\u001b[32m\u00e2\u0153\u201c built in 2.78s\u001b[39m\n"
+      "output_summary": "e-D0-EKAaX.js               \u001b[39m\u001b[1m\u001b[2m  7.09 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  2.46 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/ForgotPasswordPage-0SUwzst0.js     \u001b[39m\u001b[1m\u001b[2m  8.60 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  2.49 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/ProductDetailPage--OS4Gkyx.js      \u001b[39m\u001b[1m\u001b[2m 11.42 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip:  4.03 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/index-oyIbzAPO.js                  \u001b[39m\u001b[1m\u001b[2m284.12 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m \u00e2\u201d\u201a gzip: 93.54 kB\u001b[22m\n\u001b[32m\u00e2\u0153\u201c built in 2.47s\u001b[39m\n"
     },
     {
       "name": "Training Pipeline & Model Promotion Lifecycle Suite (15 tests)",
       "command": "C:\\Projects\\P1\\training\\venv\\Scripts\\python.exe -m unittest discover -s tests/training",
       "exit_code": 0,
-      "duration_seconds": 7.244,
+      "duration_seconds": 7.056,
       "success": true,
-      "output_summary": "INFO     | training.ingest_events | Event statistics:\n2026-08-23 01:21:14 | INFO     | training.ingest_events |   Total events: 80\n2026-08-23 01:21:14 | INFO     | training.ingest_events |   Unique users: 4\n2026-08-23 01:21:14 | INFO     | training.ingest_events |   Unique products: 4\n2026-08-23 01:21:14 | INFO     | training.ingest_events |   Event types: ['view', 'add_to_cart', 'purchase']\n2026-08-23 01:21:14 | INFO     | training.build_features | Loading events from non_existent_file.parquet\n"
+      "output_summary": "INFO     | training.ingest_events | Event statistics:\n2026-08-23 01:45:42 | INFO     | training.ingest_events |   Total events: 80\n2026-08-23 01:45:42 | INFO     | training.ingest_events |   Unique users: 4\n2026-08-23 01:45:42 | INFO     | training.ingest_events |   Unique products: 4\n2026-08-23 01:45:42 | INFO     | training.ingest_events |   Event types: ['view', 'add_to_cart', 'purchase']\n2026-08-23 01:45:42 | INFO     | training.build_features | Loading events from non_existent_file.parquet\n"
     }
   ],
   "verdict": "GO"

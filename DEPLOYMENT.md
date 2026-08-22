@@ -975,6 +975,7 @@ SMTP_USE_TLS=True
 
 ### Render Free-Tier Limitations
 
+- **Multi-Service Cold-Start & Startup Architecture**: The frontend performs an initial best-effort direct wakeup request from the client browser to the three Render services (Catalog, User, Recommendation) before initiating authoritative API Gateway readiness polling (`/api/v1/ready`). This ensures sleeping Render services receive external client HTTP triggers to begin container spin-up, while the API Gateway reliably verifies health across all dependencies (including the OCI ML Inference Engine) before transitioning the user interface to active status.
 - **Outbound SMTP Egress**: Render free-tier web services block outbound SMTP network connections (`[Errno 101] Network is unreachable`), preventing live Gmail SMTP delivery in the free-tier deployment. The frontend login flow gracefully surfaces this limitation advisory to users.
 - Free instances are not suitable for the recommendation service's startup cost and memory footprint.
 - Private services are not available on the free plan, so the backend services must be reachable by public Render URLs.

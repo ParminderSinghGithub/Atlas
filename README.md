@@ -45,7 +45,7 @@ The production services are live and directly accessible for interactive testing
 | **User & Auth Service** | https://user-service-rzbt.onrender.com | [/docs](https://user-service-rzbt.onrender.com/docs) | [/openapi.json](https://user-service-rzbt.onrender.com/openapi.json) |
 | **ML Inference Engine (OCI)** | http://150.230.143.133:8001 | [/docs](http://150.230.143.133:8001/docs) | [/openapi.json](http://150.230.143.133:8001/openapi.json) |
 
-*Note on Free-Tier Operation: Render services sleep after inactivity and cold start in ~25–30s. The frontend readiness coordinator (`/api/v1/ready`) automatically handles this wake-up transition.*
+*Note on Free-Tier Operation: Render services sleep after 15 minutes of inactivity and require ~25–35s for container cold starts. The frontend pre-wakes Render services (Catalog, User, Recommendation) directly from the client browser, then polls the API Gateway's authoritative readiness coordinator (`/api/v1/ready`) to verify multi-service availability before rendering the main application.*
 
 ---
 
