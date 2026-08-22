@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useReadiness } from '../contexts/ReadinessContext';
 import { catalogService } from '../services/catalogService';
 import type { Product, Category } from '../services/catalogService';
 import { sessionService } from '../services/sessionService';
@@ -9,6 +10,7 @@ import { GridSkeleton } from '../components/ui/Skeleton';
 
 export const ProductListPage: React.FC = () => {
   const { userId } = useAuth();
+  const { isReadyOrDegraded } = useReadiness();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialCategory = searchParams.get('category') || '';
 
@@ -25,8 +27,9 @@ export const ProductListPage: React.FC = () => {
   const nextCursorRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!isReadyOrDegraded) return;
     loadCategories();
-  }, []);
+  }, [isReadyOrDegraded]);
 
   useEffect(() => {
     const catParam = searchParams.get('category') || '';
@@ -34,8 +37,9 @@ export const ProductListPage: React.FC = () => {
   }, [searchParams]);
 
   useEffect(() => {
+    if (!isReadyOrDegraded) return;
     loadProducts();
-  }, [currentCursor, selectedCategory]);
+  }, [currentCursor, selectedCategory, isReadyOrDegraded]);
 
   const loadCategories = async () => {
     try {

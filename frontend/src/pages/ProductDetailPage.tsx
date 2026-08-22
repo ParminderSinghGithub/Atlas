@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useReadiness } from '../contexts/ReadinessContext';
 import { catalogService } from '../services/catalogService';
 import type { Product } from '../services/catalogService';
 import { recommendationService } from '../services/recommendationService';
@@ -14,6 +15,7 @@ import { Toast } from '../components/ui/Toast';
 export const ProductDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { userId, isAuthenticated } = useAuth();
+  const { isReadyOrDegraded } = useReadiness();
   const navigate = useNavigate();
   const location = useLocation();
   const [product, setProduct] = useState<Product | null>(null);
@@ -24,6 +26,7 @@ export const ProductDetailPage: React.FC = () => {
   const [showToast, setShowToast] = useState(false);
 
   useEffect(() => {
+    if (!isReadyOrDegraded) return;
     if (id) {
       loadProduct();
       loadSimilarProducts();
@@ -33,7 +36,7 @@ export const ProductDetailPage: React.FC = () => {
         sessionService.trackProductView(userId, id);
       }
     }
-  }, [id, userId]);
+  }, [id, userId, isReadyOrDegraded]);
 
   const loadProduct = async () => {
     if (!id) return;

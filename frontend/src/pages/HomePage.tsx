@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useReadiness } from '../contexts/ReadinessContext';
 import { catalogService } from '../services/catalogService';
 import type { Product, Category } from '../services/catalogService';
 import { recommendationService } from '../services/recommendationService';
@@ -11,6 +12,7 @@ import { GridSkeleton } from '../components/ui/Skeleton';
 
 export const HomePage: React.FC = () => {
   const { userId } = useAuth();
+  const { isReadyOrDegraded } = useReadiness();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [currentPage, setCurrentPage] = useState(0);
@@ -23,10 +25,11 @@ export const HomePage: React.FC = () => {
   const currentProducts = products.slice(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage);
 
   useEffect(() => {
+    if (!isReadyOrDegraded) return;
     loadCategories();
     loadProducts();
     loadRecommendations();
-  }, [userId]);
+  }, [userId, isReadyOrDegraded]);
 
   const loadCategories = async () => {
     try {

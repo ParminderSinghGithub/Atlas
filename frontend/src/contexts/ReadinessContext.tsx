@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { readinessService } from '../services/readinessService';
 import type { ReadinessResponse } from '../services/readinessService';
 
@@ -56,6 +56,7 @@ export const ReadinessProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [readinessDetails, setReadinessDetails] = useState<ReadinessResponse | null>(null);
   const [progressPercent, setProgressPercent] = useState(15);
   const [messageIndex, setMessageIndex] = useState(0);
+  const isPerformingRef = useRef<boolean>(false);
 
   const checkIsCachedReady = (): boolean => {
     try {
@@ -98,72 +99,82 @@ export const ReadinessProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return;
     }
 
+    // Deduplicate: prevent concurrent runs (e.g. React StrictMode mount)
+    if (isPerformingRef.current) return;
+    isPerformingRef.current = true;
+
     setReadinessState('WAKING_SERVICES');
     setProgressPercent(20);
 
-    const maxAttempts = 8;
+    const maxAttempts = 6;
     let attempt = 0;
 
-    while (attempt < maxAttempts) {
-      attempt++;
-      try {
-        if (attempt > 1) {
-          setReadinessState('CHECKING_READINESS');
-          setProgressPercent(Math.min(30 + attempt * 18, 90));
-        }
+    try {
+      while (attempt < maxAttempts) {
+        attempt++;
+        try {
+          if (attempt > 1) {
+            setReadinessState('CHECKING_READINESS');
+            setProgressPercent(Math.min(30 + attempt * 12, 88));
+          }
 
-        const data = await readinessService.checkReadiness(attempt > 1);
-        setReadinessDetails(data);
+          // Gentle polling without force_refresh spamming downstream
+          const data = await readinessService.checkReadiness(false);
+          setReadinessDetails(data);
 
-        if (data.status === 'ready') {
-          setProgressPercent(100);
-          setReadinessState('READY');
-          markEstablished();
-          return;
-        } else if (data.status === 'degraded') {
-          // If in early attempts, give recommendation engine a brief chance to finish waking
-          if (attempt >= 3) {
+          if (data.status === 'ready') {
             setProgressPercent(100);
-            setReadinessState('DEGRADED');
+            setReadinessState('READY');
             markEstablished();
             return;
+          } else if (data.status === 'degraded') {
+            if (attempt >= 2) {
+              setProgressPercent(100);
+              setReadinessState('DEGRADED');
+              markEstablished();
+              return;
+            } else {
+              setProgressPercent(Math.min(50 + attempt * 15, 88));
+              await new Promise((res) => setTimeout(res, 4000));
+            }
+          } else if (data.status === 'warming_up') {
+            // Progressive backoff to allow sleeping Render containers time to boot
+            const backoffMs = Math.min(3500 + attempt * 1000, 7500);
+            setProgressPercent(Math.min(30 + attempt * 10, 85));
+            await new Promise((res) => setTimeout(res, backoffMs));
           } else {
-            setProgressPercent(Math.min(50 + attempt * 15, 90));
-            await new Promise((res) => setTimeout(res, 2500));
+            // Unavailable / timeout
+            await new Promise((res) => setTimeout(res, 4500));
           }
-        } else if (data.status === 'warming_up') {
-          // Continue polling
-          setProgressPercent(Math.min(40 + attempt * 8, 88));
-          await new Promise((res) => setTimeout(res, 3000));
-        } else {
-          // Wait and retry
-          await new Promise((res) => setTimeout(res, 3500));
-        }
-      } catch (err) {
-        console.warn(`[READINESS] Attempt ${attempt} failed, retrying...`, err);
-        if (attempt < maxAttempts) {
-          await new Promise((res) => setTimeout(res, 3500));
+        } catch (err) {
+          console.warn(`[READINESS] Attempt ${attempt} failed, backing off...`, err);
+          const backoffMs = Math.min(4000 + attempt * 1000, 8000);
+          if (attempt < maxAttempts) {
+            await new Promise((res) => setTimeout(res, backoffMs));
+          }
         }
       }
-    }
 
-    // If still not ready after attempts, check if we can at least browse
-    try {
-      const finalCheck = await readinessService.checkReadiness().catch(() => null);
-      if (finalCheck && (finalCheck.status === 'ready' || finalCheck.status === 'degraded')) {
-        setReadinessDetails(finalCheck);
-        setReadinessState(finalCheck.status === 'ready' ? 'READY' : 'DEGRADED');
-        setProgressPercent(100);
-        markEstablished();
-        return;
+      // If still not ready after attempts, check if we can at least browse
+      try {
+        const finalCheck = await readinessService.checkReadiness().catch(() => null);
+        if (finalCheck && (finalCheck.status === 'ready' || finalCheck.status === 'degraded')) {
+          setReadinessDetails(finalCheck);
+          setReadinessState(finalCheck.status === 'ready' ? 'READY' : 'DEGRADED');
+          setProgressPercent(100);
+          markEstablished();
+          return;
+        }
+      } catch {
+        // Fall through
       }
-    } catch {
-      // Fall through
-    }
 
-    // Default to degraded to let user browse catalog rather than hard lock
-    setReadinessState('DEGRADED');
-    setProgressPercent(100);
+      // Default to degraded to let user browse catalog rather than hard lock
+      setReadinessState('DEGRADED');
+      setProgressPercent(100);
+    } finally {
+      isPerformingRef.current = false;
+    }
   }, []);
 
   useEffect(() => {
