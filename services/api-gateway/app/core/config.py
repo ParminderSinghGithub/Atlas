@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     RECOMMENDATION_SERVICE_URL: str = "http://recommendation-service:5005"
     ML_INFERENCE_SERVICE_URL: str = "http://150.230.143.133:8001"
     RECOMMENDATION_TIMEOUT_SECONDS: float = 30.0
-    PROBE_TIMEOUT_SECONDS: float = 15.0
+    PROBE_TIMEOUT_SECONDS: float = 45.0
     READINESS_CACHE_TTL_SECONDS: float = 10.0
 
     class Config:
