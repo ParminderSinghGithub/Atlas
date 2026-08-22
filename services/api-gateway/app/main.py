@@ -139,7 +139,8 @@ async def _probe_single_service(
     service_key: str,
     name: str,
     url: str,
-    is_critical: bool = True
+    is_critical: bool = True,
+    custom_headers: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Probe a single downstream service and verify actual readiness with structured diagnostic logging."""
     t0 = time.time()
@@ -150,7 +151,15 @@ async def _probe_single_service(
         service_key, sanitized_url, iso_now
     )
 
-    headers = {"Accept": "application/json", "User-Agent": "Atlas-API-Gateway/2.0"}
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": (custom_headers.get("user-agent") if custom_headers and "user-agent" in custom_headers else "Atlas-API-Gateway/2.0"),
+    }
+    if custom_headers:
+        for hk in ["accept-language", "sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform"]:
+            if hk in custom_headers:
+                headers[hk] = custom_headers[hk]
+
     timeout_s = getattr(client.timeout, "read", settings.PROBE_TIMEOUT_SECONDS)
     follow_redirects = getattr(client, "follow_redirects", True)
 
@@ -388,7 +397,7 @@ async def _probe_single_service(
 
 @app.get("/api/v1/ready", tags=["Health & Readiness"], summary="Coordinated System Readiness & Warm-up")
 @app.get("/ready", tags=["Health & Readiness"], summary="Coordinated System Readiness & Warm-up Alias")
-async def system_readiness(force_refresh: bool = False):
+async def system_readiness(request: Request = None, force_refresh: bool = False):
     """
     Coordinated readiness and warm-up probe for Atlas.
     
@@ -437,10 +446,12 @@ async def system_readiness(force_refresh: bool = False):
         targets_dict = {key: _sanitize_url(url) for key, name, url, critical in probes}
         logger.info("READINESS_DISPATCH_START targets=%s", targets_dict)
 
+        client_headers = dict(request.headers) if request is not None and hasattr(request, "headers") else {}
+
         timeout = httpx.Timeout(settings.PROBE_TIMEOUT_SECONDS)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             tasks = [
-                _probe_single_service(client, key, name, url, critical)
+                _probe_single_service(client, key, name, url, critical, custom_headers=client_headers)
                 for key, name, url, critical in probes
             ]
             results_list = await asyncio.gather(*tasks, return_exceptions=True)
