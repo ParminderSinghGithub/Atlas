@@ -45,7 +45,7 @@
   │(FastAPI / Render)│   │(FastAPI / Render)│   │ Service (Render) │
   │ • Auth (JWT)     │   │ • Products       │   │ • Candidate Recall
   │ • OTP Password   │   │ • Categories     │   │ • Session Boost  │
-  │ • Resend / SMTP  │   │ • Event Logging  │   │ • 90d User Profile│
+  │ • Gmail SMTP     │   │ • Event Logging  │   │ • 90d User Profile│
   └────────┬─────────┘   └────────┬─────────┘   └────────┬─────────┘
            │                      │                      │
            │                      │                      │ (HTTP REST /infer)
@@ -538,7 +538,7 @@ const api = axios.create({
 - JWT authentication (HS256 algorithm with expiration)
 - Password hashing (bcrypt, 12 rounds)
 - Single-use 6-digit numeric OTP password recovery (15-minute expiration)
-- Transactional email dispatch via **Resend REST API** with standard **SMTP SSL/STARTTLS** fallback
+- Transactional password reset email delivery exclusively via **Gmail SMTP** (dedicated Atlas Gmail account & 16-character Google App Password with STARTTLS/TLS)
 - User profile CRUD
 
 **Endpoints**:

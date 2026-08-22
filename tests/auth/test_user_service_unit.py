@@ -247,44 +247,59 @@ class TestUserServiceUnit(unittest.TestCase):
         self.assertIsNotNone(new_login_res.token)
 
     def test_email_delivery_mechanisms(self):
-        """Test SMTP, API, and fallback email delivery functions."""
+        """Test Gmail SMTP delivery, SSL/STARTTLS, custom sender, and fallback."""
         from unittest.mock import patch, MagicMock
         from app.core.email import send_password_reset_email
         from app.core.config import settings
 
-        # 1. Unconfigured fallback
-        with patch.object(settings, "smtp_host", None), \
-             patch.object(settings, "resend_api_key", None):
+        # 1. Unconfigured local dev fallback
+        with patch.object(settings, "smtp_user", None), \
+             patch.object(settings, "smtp_password", None):
             res = send_password_reset_email("test@example.com", "123456", "Test User")
             self.assertTrue(res)
 
-        # 2. Mock SMTP delivery
+        # 2. Mock Gmail SMTP STARTTLS delivery (Port 587)
         with patch.object(settings, "smtp_host", "smtp.gmail.com"), \
-             patch.object(settings, "smtp_user", "sender@gmail.com"), \
-             patch.object(settings, "smtp_password", "app_password_123"), \
+             patch.object(settings, "smtp_user", "atlas.platform.official@gmail.com"), \
+             patch.object(settings, "smtp_password", "abcd efgh ijkl mnop"), \
              patch.object(settings, "smtp_port", 587), \
              patch.object(settings, "smtp_use_tls", True), \
-             patch.object(settings, "resend_api_key", None), \
+             patch.object(settings, "smtp_from_email", "Atlas <atlas.platform.official@gmail.com>"), \
              patch("smtplib.SMTP") as mock_smtp:
             mock_server = MagicMock()
             mock_smtp.return_value.__enter__.return_value = mock_server
 
-            res = send_password_reset_email("recipient@example.com", "654321", "Alice")
+            res = send_password_reset_email("user@domain.com", "654321", "Alice")
             self.assertTrue(res)
             mock_server.starttls.assert_called_once()
-            mock_server.login.assert_called_once_with("sender@gmail.com", "app_password_123")
+            mock_server.login.assert_called_once_with("atlas.platform.official@gmail.com", "abcd efgh ijkl mnop")
             mock_server.sendmail.assert_called_once()
+            args, _ = mock_server.sendmail.call_args
+            self.assertEqual(args[0], "atlas.platform.official@gmail.com")
+            self.assertEqual(args[1], ["user@domain.com"])
+            self.assertIn("654321", args[2])
 
-        # 3. Mock Resend API delivery
-        with patch.object(settings, "resend_api_key", "re_test_key_123"), \
-             patch("urllib.request.urlopen") as mock_urlopen:
-            mock_resp = MagicMock()
-            mock_resp.status = 200
-            mock_urlopen.return_value.__enter__.return_value = mock_resp
+        # 3. Mock Gmail SMTP SSL delivery (Port 465)
+        with patch.object(settings, "smtp_host", "smtp.gmail.com"), \
+             patch.object(settings, "smtp_user", "atlas.platform.official@gmail.com"), \
+             patch.object(settings, "smtp_password", "abcd efgh ijkl mnop"), \
+             patch.object(settings, "smtp_port", 465), \
+             patch("smtplib.SMTP_SSL") as mock_smtp_ssl:
+            mock_ssl_server = MagicMock()
+            mock_smtp_ssl.return_value.__enter__.return_value = mock_ssl_server
 
-            res = send_password_reset_email("api_user@example.com", "999888", "Bob")
+            res = send_password_reset_email("ssl_user@domain.com", "112233", "Bob")
             self.assertTrue(res)
-            mock_urlopen.assert_called_once()
+            mock_ssl_server.login.assert_called_once_with("atlas.platform.official@gmail.com", "abcd efgh ijkl mnop")
+            mock_ssl_server.sendmail.assert_called_once()
+
+        # 4. Mock SMTP Exception handling
+        with patch.object(settings, "smtp_host", "smtp.gmail.com"), \
+             patch.object(settings, "smtp_user", "atlas.platform.official@gmail.com"), \
+             patch.object(settings, "smtp_password", "invalid_password"), \
+             patch("smtplib.SMTP", side_effect=Exception("Authentication failed")):
+            res = send_password_reset_email("fail_user@domain.com", "999888", "Charlie")
+            self.assertFalse(res)
 
 
 if __name__ == "__main__":

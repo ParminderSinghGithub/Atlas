@@ -28,19 +28,16 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"  # MUST be HS256 for Node.js compatibility
     jwt_expiration_hours: int = 1  # 1 hour expiration
     
-    # Password Reset & Recovery Configuration
+    # Password Reset & Email Configuration (Gmail SMTP)
     reset_token_expiration_minutes: int = 15
     
-    # Optional Email Configuration (SMTP / Resend)
-    smtp_host: Optional[str] = None
+    # SMTP Configuration (Dedicated Atlas Gmail Account)
+    smtp_host: Optional[str] = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_user: Optional[str] = None
     smtp_password: Optional[str] = None
     smtp_from_email: Optional[str] = None
     smtp_use_tls: bool = True
-    
-    resend_api_key: Optional[str] = None
-    resend_from_email: Optional[str] = "onboarding@resend.dev"
     
     # Password Hashing
     bcrypt_rounds: int = 10

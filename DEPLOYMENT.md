@@ -955,6 +955,23 @@ alembic upgrade head
 
 If you run them from Render shell, use the same commands inside each service directory after the service is deployed.
 
+### Email Delivery Configuration (Gmail SMTP)
+
+Atlas uses **Gmail SMTP** for delivering password-reset OTP verification codes:
+- **Dedicated Account**: Uses a dedicated Gmail address as the sender.
+- **Authentication**: Requires a Google **16-character App Password** (the account's actual login password must NOT be used).
+- **Recipient**: The user's requested email address entered during the password reset flow.
+
+**Render Environment Variables (`user-service`):**
+```bash
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=<ATLAS_GMAIL_ADDRESS>
+SMTP_PASSWORD=<GOOGLE_16_CHARACTER_APP_PASSWORD>
+SMTP_FROM_EMAIL=Atlas <<ATLAS_GMAIL_ADDRESS>>
+SMTP_USE_TLS=True
+```
+
 ### Render Free-Tier Limitations
 
 - Free instances are not suitable for the recommendation service's startup cost and memory footprint.
