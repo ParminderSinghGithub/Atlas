@@ -122,8 +122,9 @@ async def _probe_single_service(
 ) -> Dict[str, Any]:
     """Probe a single downstream service and verify actual readiness."""
     t0 = time.time()
+    headers = {"Accept": "application/json", "User-Agent": "Atlas-API-Gateway/2.0"}
     try:
-        resp = await client.get(url)
+        resp = await client.get(url, headers=headers)
         if resp.status_code == 404:
             # Try alternate health path cleanly
             if "/api/v1/catalog/health" in url:
@@ -134,7 +135,7 @@ async def _probe_single_service(
                 alt_url = url
             if alt_url != url:
                 try:
-                    resp = await client.get(alt_url)
+                    resp = await client.get(alt_url, headers=headers)
                 except Exception:
                     pass
 
@@ -214,13 +215,19 @@ async def system_readiness(force_refresh: bool = False):
     """
     now = time.time()
     if not force_refresh and _readiness_cache["data"] is not None:
-        if (now - _readiness_cache["timestamp"]) < settings.READINESS_CACHE_TTL_SECONDS:
+        cache_age = now - _readiness_cache["timestamp"]
+        is_cached_ready = _readiness_cache["data"].get("status") in ("ready", "degraded")
+        max_cache_age = settings.READINESS_CACHE_TTL_SECONDS if is_cached_ready else 2.0
+        if cache_age < max_cache_age:
             return _readiness_cache["data"]
 
     async with _readiness_lock:
         # Double check after lock
         if not force_refresh and _readiness_cache["data"] is not None:
-            if (time.time() - _readiness_cache["timestamp"]) < settings.READINESS_CACHE_TTL_SECONDS:
+            cache_age = time.time() - _readiness_cache["timestamp"]
+            is_cached_ready = _readiness_cache["data"].get("status") in ("ready", "degraded")
+            max_cache_age = settings.READINESS_CACHE_TTL_SECONDS if is_cached_ready else 2.0
+            if cache_age < max_cache_age:
                 return _readiness_cache["data"]
 
         rec_url = get_recommendation_service_url()
@@ -236,12 +243,12 @@ async def system_readiness(force_refresh: bool = False):
         ]
 
         timeout = httpx.Timeout(settings.PROBE_TIMEOUT_SECONDS)
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             tasks = [
                 _probe_single_service(client, key, name, url, critical)
                 for key, name, url, critical in probes
             ]
-            results_list = await asyncio.gather(*tasks)
+            results_list = await asyncio.gather(*tasks, return_exceptions=True)
 
         services_dict = {
             "api_gateway": {
@@ -252,7 +259,16 @@ async def system_readiness(force_refresh: bool = False):
             }
         }
         for probe_def, res in zip(probes, results_list):
-            services_dict[probe_def[0]] = res
+            if isinstance(res, Exception):
+                services_dict[probe_def[0]] = {
+                    "name": probe_def[1],
+                    "status": "warming_up",
+                    "latency_ms": 0.0,
+                    "critical": probe_def[3],
+                    "error": str(res),
+                }
+            else:
+                services_dict[probe_def[0]] = res
 
         # Compute overall status
         ready_count = sum(1 for s in services_dict.values() if s.get("status") == "ready")
@@ -300,7 +316,7 @@ async def system_readiness(force_refresh: bool = False):
 @app.api_route("/api/auth/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], tags=["Authentication"])
 async def proxy_auth(path: str, request: Request):
     """Proxy all /api/auth/* requests to user-service."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         base_url = get_user_service_url()
         url = f"{base_url}/api/auth/{path}"
         headers = dict(request.headers)
@@ -329,7 +345,7 @@ async def proxy_auth(path: str, request: Request):
 @app.api_route("/api/v1/categories{path:path}", methods=["GET", "OPTIONS"], tags=["Catalog"])
 async def proxy_catalog(request: Request, path: str = ""):
     """Proxy all catalog and taxonomy requests to catalog-service."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         base_url = get_catalog_service_url()
         req_path = request.url.path
         if req_path.startswith("/api/v1/catalog/"):
@@ -366,7 +382,7 @@ async def proxy_catalog(request: Request, path: str = ""):
 @app.api_route("/api/v1/recommendations", methods=["GET", "OPTIONS"], tags=["Recommendations & Session"])
 async def proxy_recommendations(request: Request):
     """Proxy /api/v1/recommendations to recommendation-service."""
-    async with httpx.AsyncClient(timeout=settings.RECOMMENDATION_TIMEOUT_SECONDS) as client:
+    async with httpx.AsyncClient(timeout=settings.RECOMMENDATION_TIMEOUT_SECONDS, follow_redirects=True) as client:
         base_url = get_recommendation_service_url()
         url = f"{base_url}/api/v1/recommendations"
         headers = dict(request.headers)
@@ -394,7 +410,7 @@ async def proxy_recommendations(request: Request):
 @app.api_route("/api/v1/session/track", methods=["POST", "OPTIONS"], tags=["Recommendations & Session"])
 async def proxy_session_track(request: Request):
     """Proxy session tracking to recommendation-service."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         base_url = get_recommendation_service_url()
         url = f"{base_url}/api/v1/session/track"
         headers = dict(request.headers)
@@ -430,7 +446,7 @@ async def proxy_session_track(request: Request):
 @app.api_route("/events", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], tags=["Events"])
 async def proxy_events(request: Request, path: str = ""):
     """Proxy all event ingestion requests to catalog-service."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         base_url = get_catalog_service_url()
         target_path = f"/events/{path}" if path else "/events"
         url = f"{base_url}{target_path}"
