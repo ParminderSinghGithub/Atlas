@@ -22,9 +22,9 @@ export interface ReadinessResponse {
 
 class ReadinessService {
   async checkReadiness(forceRefresh = false): Promise<ReadinessResponse> {
-    const response = await api.get<ReadinessResponse>('/ready', {
+    const response = await api.get<ReadinessResponse>('/v1/ready', {
       params: forceRefresh ? { force_refresh: true } : {},
-      timeout: 5000,
+      timeout: 15000,
     });
     return response.data;
   }

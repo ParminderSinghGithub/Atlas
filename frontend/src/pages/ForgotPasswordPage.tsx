@@ -13,7 +13,7 @@ export const ForgotPasswordPage: React.FC = () => {
   const [token, setToken] = useState(initialToken);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [infoMessage, setInfoMessage] = useState('');
@@ -78,62 +78,65 @@ export const ForgotPasswordPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center bg-gray-50 px-4 py-8">
-      <div className="bg-white p-6 sm:p-8 rounded-xl shadow-lg border border-gray-100 w-full max-w-md">
-        <div className="text-center mb-6">
-          <h2 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            {successMessage ? 'Password Reset Complete' : step === 'request' ? 'Forgot Password' : 'Reset Password'}
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
+    <div className="min-h-[75vh] flex items-center justify-center px-4 py-12">
+      <div className="bg-white p-8 sm:p-10 rounded-3xl shadow-xl border border-slate-200/80 w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center font-extrabold text-white text-xl shadow-lg shadow-blue-500/20 mx-auto mb-3">
+            A
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+            {successMessage ? 'Password Updated' : step === 'request' ? 'Password Recovery' : 'Set New Password'}
+          </h1>
+          <p className="text-xs text-slate-500 mt-1">
             {successMessage
-              ? 'Your credentials have been securely updated.'
+              ? 'Your password has been securely reset.'
               : step === 'request'
-              ? 'Enter your account email to receive a recovery code.'
-              : 'Enter your verification code and new password.'}
+              ? 'Enter your registered email to receive an OTP verification code.'
+              : 'Enter your 6-digit code and choose a new password.'}
           </p>
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm mb-4">
+          <div className="bg-rose-50 border border-rose-200/80 text-rose-700 px-4 py-3 rounded-xl text-xs font-medium mb-6">
             {error}
           </div>
         )}
 
         {infoMessage && !successMessage && (
-          <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg text-sm mb-4">
+          <div className="bg-blue-50 border border-blue-200/80 text-blue-800 px-4 py-3 rounded-xl text-xs font-medium mb-6">
             {infoMessage}
           </div>
         )}
 
         {successMessage ? (
-          <div className="space-y-4">
-            <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-4 rounded-lg text-sm flex items-start gap-3">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+          <div className="space-y-6">
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-2xl text-xs flex items-start gap-3">
+              <svg className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
               <div>
-                <p className="font-medium">{successMessage}</p>
-                <p className="mt-1 text-green-700">You can now sign in to your Atlas account using your new password.</p>
+                <p className="font-semibold text-emerald-900">{successMessage}</p>
+                <p className="mt-1 text-emerald-700">You can now sign in with your updated password.</p>
               </div>
             </div>
 
             <button
               onClick={() => navigate('/login')}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors shadow-sm"
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-all duration-200 shadow-md shadow-blue-600/20"
             >
-              Proceed to Login
+              Proceed to Sign In
             </button>
           </div>
         ) : step === 'request' ? (
           <form onSubmit={handleRequestReset} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Account Email</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Account Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
-                className="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                 required
                 disabled={loading}
               />
@@ -142,17 +145,17 @@ export const ForgotPasswordPage: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors disabled:bg-gray-400 shadow-sm text-sm"
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold transition-all duration-200 shadow-md shadow-blue-600/20 disabled:bg-slate-400 mt-2"
             >
               {loading ? 'Sending Code...' : 'Send Recovery Code'}
             </button>
 
             <div className="text-center pt-2">
-              <span className="text-xs text-gray-500">Already have a recovery code? </span>
+              <span className="text-xs text-slate-500">Already have a code? </span>
               <button
                 type="button"
                 onClick={() => setStep('reset')}
-                className="text-xs text-blue-600 hover:underline font-medium"
+                className="text-xs text-blue-600 hover:underline font-semibold"
               >
                 Enter code directly
               </button>
@@ -161,55 +164,55 @@ export const ForgotPasswordPage: React.FC = () => {
         ) : (
           <form onSubmit={handleCompleteReset} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Account Email</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Account Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
-                className="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                 required
                 disabled={loading}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Verification Code / OTP</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Verification Code / OTP</label>
               <input
                 type="text"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
-                placeholder="6-digit code (e.g. 849201)"
+                placeholder="e.g. 563079"
                 maxLength={64}
-                className="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm tracking-widest font-mono"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm tracking-widest font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                 required
                 disabled={loading}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">New Password</label>
               <input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="Minimum 6 characters"
                 minLength={6}
-                className="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                 required
                 disabled={loading}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Confirm New Password</label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Re-enter new password"
                 minLength={6}
-                className="w-full px-3.5 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                 required
                 disabled={loading}
               />
@@ -218,16 +221,16 @@ export const ForgotPasswordPage: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg transition-colors disabled:bg-gray-400 shadow-sm text-sm"
+              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold transition-all duration-200 shadow-md shadow-emerald-600/20 disabled:bg-slate-400 mt-2"
             >
-              {loading ? 'Resetting Password...' : 'Reset Password'}
+              {loading ? 'Updating Password...' : 'Save New Password'}
             </button>
 
             <div className="text-center pt-2">
               <button
                 type="button"
                 onClick={() => setStep('request')}
-                className="text-xs text-gray-500 hover:text-gray-700 hover:underline"
+                className="text-xs text-slate-500 hover:text-slate-800 hover:underline"
               >
                 Request a new code
               </button>
@@ -235,12 +238,9 @@ export const ForgotPasswordPage: React.FC = () => {
           </form>
         )}
 
-        <div className="mt-6 pt-4 border-t border-gray-100 text-center">
-          <Link to="/login" className="text-sm text-blue-600 hover:underline font-medium inline-flex items-center gap-1">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to Login
+        <div className="mt-8 pt-6 border-t border-slate-100 text-center">
+          <Link to="/login" className="text-xs text-blue-600 hover:underline font-semibold inline-flex items-center gap-1">
+            &larr; Back to Sign In
           </Link>
         </div>
       </div>

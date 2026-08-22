@@ -1,16 +1,22 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { catalogService } from '../services/catalogService';
 import type { Product, Category } from '../services/catalogService';
 import { sessionService } from '../services/sessionService';
+import { ProductCard } from '../components/ui/ProductCard';
+import { GridSkeleton } from '../components/ui/Skeleton';
 
 export const ProductListPage: React.FC = () => {
   const { userId } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialCategory = searchParams.get('category') || '';
+
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [sortBy, setSortBy] = useState<string>('default');
   const [currentCursor, setCurrentCursor] = useState<string | null>(null);
   const [prevCursors, setPrevCursors] = useState<(string | null)[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -23,22 +29,23 @@ export const ProductListPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const catParam = searchParams.get('category') || '';
+    setSelectedCategory(catParam);
+  }, [searchParams]);
+
+  useEffect(() => {
     loadProducts();
   }, [currentCursor, selectedCategory]);
 
   const loadCategories = async () => {
     try {
       const cats = await catalogService.getCategories();
-      console.log('[PRODUCTS] Categories response:', cats);
-      // Safety check: ensure categories is an array
       if (Array.isArray(cats)) {
         setCategories(cats);
       } else {
-        console.error('[PRODUCTS] Categories is not an array:', typeof cats);
         setCategories([]);
       }
-    } catch (error) {
-      console.error('Failed to load categories:', error);
+    } catch {
       setCategories([]);
     }
   };
@@ -51,220 +58,216 @@ export const ProductListPage: React.FC = () => {
         limit: perPage,
         category_id: selectedCategory || undefined,
       });
-      console.log('[PRODUCTS] API Response:', response);
-      console.log('[PRODUCTS] Products array:', response.products);
-      
-      // Safety check: ensure products is an array
+
       if (Array.isArray(response.products)) {
         setProducts(response.products);
       } else {
-        console.error('[PRODUCTS] Response.products is not an array:', typeof response.products);
         setProducts([]);
       }
-      
-      // Store next cursor and has_more flag
+
       const nextCursor = response.pagination?.next_cursor || null;
       setHasMore(!!nextCursor && response.pagination?.has_more);
-      
-      // Store the next cursor for the "Next" button
       nextCursorRef.current = nextCursor;
     } catch (error) {
-      console.error('Failed to load products:', error);
-      setProducts([]); // Set empty array on error
+      console.error('Failed to load catalog products:', error);
+      setProducts([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCategoryChange = (categoryId: string) => {
+  const handleCategorySelect = (categoryId: string) => {
     setSelectedCategory(categoryId);
     setCurrentCursor(null);
     setPrevCursors([]);
-    
-    // Track category view for session re-ranking
+
     if (categoryId) {
+      setSearchParams({ category: categoryId });
       const activeSessionId = sessionService.getSessionId(userId);
-      const catObj = categories.find(c => c.id === categoryId);
+      const catObj = categories.find((c) => c.id === categoryId);
       const slugOrName = catObj?.slug || catObj?.name?.toLowerCase().replace(/\s+/g, '-') || categoryId;
       sessionService.trackCategoryView(activeSessionId, String(slugOrName));
+    } else {
+      setSearchParams({});
     }
   };
 
-  // Filter products by search query
-  const filteredProducts = products.filter((product) =>
-    product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (product.description && product.description.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const handleNextPage = () => {
+    if (nextCursorRef.current) {
+      setPrevCursors((prev) => [...prev, currentCursor]);
+      setCurrentCursor(nextCursorRef.current);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (prevCursors.length > 0) {
+      const newPrev = [...prevCursors];
+      const prev = newPrev.pop();
+      setPrevCursors(newPrev);
+      setCurrentCursor(prev || null);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  // Filter & sort
+  let processedProducts = products.filter((product) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      product.name.toLowerCase().includes(q) ||
+      (product.description && product.description.toLowerCase().includes(q))
+    );
+  });
+
+  if (sortBy === 'price_asc') {
+    processedProducts = [...processedProducts].sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+  } else if (sortBy === 'price_desc') {
+    processedProducts = [...processedProducts].sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
+  } else if (sortBy === 'name_asc') {
+    processedProducts = [...processedProducts].sort((a, b) => a.name.localeCompare(b.name));
+  }
 
   return (
-    <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
-      <h1 className="text-2xl sm:text-3xl font-bold mb-6 sm:mb-8 text-gray-800">Product Catalog</h1>
-
-      {/* Search and Filter Section */}
-      <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6 mb-6 sm:mb-8 border border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Search Bar */}
-          <div>
-            <label className="block text-sm font-semibold mb-2 text-gray-700">Search Products</label>
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by name or description..."
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 pl-10 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                className="h-5 w-5 absolute left-3 top-2.5 text-gray-400" 
-                fill="none" 
-                viewBox="0 0 24 24" 
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-          </div>
-
-          {/* Category Filter */}
-          <div>
-            <label className="block text-sm font-semibold mb-2 text-gray-700">Filter by Category</label>
-            <select
-              value={selectedCategory}
-              onChange={(e) => handleCategoryChange(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Categories</option>
-              {Array.isArray(categories) && categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-          </div>
+    <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-10 max-w-7xl">
+      {/* Header & Title */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            Product Catalog
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Browse through our active collection of quality products.
+          </p>
         </div>
 
-        {/* Results Count */}
-        <div className="mt-4 text-sm text-gray-600">
-          {searchQuery && (
-            <span>Showing {filteredProducts.length} results for "{searchQuery}"</span>
-          )}
-          {!searchQuery && (
-            <span>Showing {products.length} products</span>
-          )}
+        {/* Search & Sort Controls */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          {/* Search Box */}
+          <div className="relative min-w-[240px]">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search products..."
+              className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200/80 bg-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+            />
+            <svg
+              className="w-4 h-4 text-slate-400 absolute left-3 top-2.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Sort Dropdown */}
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="px-3.5 py-2 rounded-xl border border-slate-200/80 bg-white text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+          >
+            <option value="default">Featured</option>
+            <option value="price_asc">Price: Low to High</option>
+            <option value="price_desc">Price: High to Low</option>
+            <option value="name_asc">Name: A-Z</option>
+          </select>
         </div>
       </div>
 
-      {/* Product Grid */}
+      {/* Category Filter Pills */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-8 no-scrollbar">
+        <button
+          onClick={() => handleCategorySelect('')}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+            selectedCategory === ''
+              ? 'bg-slate-900 text-white shadow-md'
+              : 'bg-white text-slate-600 border border-slate-200/80 hover:border-slate-300'
+          }`}
+        >
+          All Categories
+        </button>
+        {categories.map((cat) => (
+          <button
+            key={cat.id}
+            onClick={() => handleCategorySelect(cat.id)}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+              selectedCategory === cat.id
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                : 'bg-white text-slate-600 border border-slate-200/80 hover:border-slate-300'
+            }`}
+          >
+            {cat.name}
+          </button>
+        ))}
+      </div>
+
+      {/* Main Products Grid */}
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 animate-pulse h-80 flex flex-col justify-between">
-              <div className="aspect-square bg-gray-200 rounded mb-3" />
-              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
-              <div className="h-4 bg-gray-200 rounded w-1/2 mb-2" />
-              <div className="h-6 bg-gray-200 rounded w-1/3 mt-auto" />
-            </div>
-          ))}
-        </div>
-      ) : filteredProducts.length === 0 ? (
-        <div className="text-center py-16">
-          <svg className="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <p className="text-gray-600 text-lg">No products found matching your criteria</p>
+        <GridSkeleton count={8} />
+      ) : processedProducts.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center max-w-lg mx-auto shadow-sm">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 mx-auto flex items-center justify-center mb-3">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <h3 className="text-sm font-semibold text-slate-800 mb-1">No products match your criteria</h3>
+          <p className="text-xs text-slate-500 mb-4">Try clearing filters or searching for different keywords.</p>
           <button
             onClick={() => {
               setSearchQuery('');
-              setSelectedCategory('');
+              handleCategorySelect('');
             }}
-            className="mt-4 text-blue-600 hover:text-blue-700 font-medium"
+            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
           >
-            Clear filters
+            Reset Filters
           </button>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
-            {filteredProducts.map((product) => (
-              <Link
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
+            {processedProducts.map((product) => (
+              <ProductCard
                 key={product.id}
-                to={`/products/${product.id}`}
-                className="bg-white rounded-lg shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group border border-gray-200"
-              >
-                {product.image_url ? (
-                  <div className="aspect-square bg-gray-100 overflow-hidden">
-                    <img
-                      src={product.image_url}
-                      alt={product.name}
-                      className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                  </div>
-                ) : (
-                  <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                    <svg className="w-16 h-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                )}
-                <div className="p-4">
-                  <h3 className="font-semibold mb-3 text-gray-800 line-clamp-2 min-h-[3rem]">
-                    {product.name}
-                  </h3>
-                  {product.description && (
-                    <p className="text-xs text-gray-500 mb-3 line-clamp-2 leading-relaxed">
-                      {product.description}
-                    </p>
-                  )}
-                  {product.category_name && (
-                    <span className="inline-block text-xs bg-gradient-to-r from-blue-50 to-purple-50 text-blue-700 px-2.5 py-1 rounded-full mb-3 font-medium">
-                      {product.category_name}
-                    </span>
-                  )}
-                  <div className="text-xl font-bold text-green-600 mt-2">
-                    ₹{typeof product.price === 'string' ? parseFloat(product.price).toFixed(2) : product.price.toFixed(2)}
-                  </div>
-                </div>
-              </Link>
+                id={product.id}
+                name={product.name}
+                price={product.price}
+                imageUrl={product.image_url}
+                categoryName={product.category_name}
+              />
             ))}
           </div>
 
-          {/* Pagination */}
-          {!searchQuery && (
-            <div className="flex justify-center items-center gap-2 mb-8">
-              <button
-                onClick={() => {
-                  if (prevCursors.length > 0) {
-                    const newPrevCursors = [...prevCursors];
-                    const prevCursor = newPrevCursors.pop();
-                    setPrevCursors(newPrevCursors);
-                    setCurrentCursor(prevCursor || null);
-                  }
-                }}
-                disabled={prevCursors.length === 0}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
-              >
-                Previous
-              </button>
-              <span className="text-gray-600 px-4">
-                Page {prevCursors.length + 1}
-              </span>
-              <button
-                onClick={() => {
-                  if (hasMore && nextCursorRef.current) {
-                    setPrevCursors([...prevCursors, currentCursor]);
-                    setCurrentCursor(nextCursorRef.current);
-                  }
-                }}
-                disabled={!hasMore}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
-              >
-                Next
-              </button>
-            </div>
-          )}
+          {/* Cursor-based Pagination */}
+          <div className="flex justify-center items-center gap-3 mt-12 pt-6 border-t border-slate-200/60">
+            <button
+              onClick={handlePrevPage}
+              disabled={prevCursors.length === 0}
+              className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-white border border-slate-200/80 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              &larr; Previous Page
+            </button>
+            <span className="text-xs font-medium text-slate-500">
+              Page {prevCursors.length + 1}
+            </span>
+            <button
+              onClick={handleNextPage}
+              disabled={!hasMore}
+              className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-white border border-slate-200/80 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              Next Page &rarr;
+            </button>
+          </div>
         </>
       )}
     </div>

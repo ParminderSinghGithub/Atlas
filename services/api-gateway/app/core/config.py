@@ -12,7 +12,13 @@ import os
 from urllib.parse import urlparse
 from typing import Optional
 
-from pydantic_settings import BaseSettings
+try:
+    from pydantic_settings import BaseSettings
+except ImportError:
+    try:
+        from pydantic.v1 import BaseSettings
+    except ImportError:
+        from pydantic import BaseSettings
 
 
 class Settings(BaseSettings):

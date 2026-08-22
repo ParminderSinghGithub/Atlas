@@ -285,7 +285,8 @@ async def proxy_auth(path: str, request: Request):
 async def proxy_catalog(path: str, request: Request):
     """Proxy all /api/v1/catalog/* requests to catalog-service (read-only)."""
     async with httpx.AsyncClient() as client:
-        url = f"{settings.CATALOG_SERVICE_URL}/api/v1/catalog/{path}"
+        clean_path = path[8:] if path.startswith("catalog/") else path
+        url = f"{settings.CATALOG_SERVICE_URL}/api/v1/{clean_path}"
         headers = dict(request.headers)
         headers.pop("host", None)
         
