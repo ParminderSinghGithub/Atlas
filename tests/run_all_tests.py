@@ -253,6 +253,16 @@ def main():
     )
     results.append(frontend_suite)
 
+    # 7. Training Pipeline & Model Promotion Lifecycle (Offline ML)
+    training_py = str(PROJECT_ROOT / "training" / "venv" / "Scripts" / "python.exe")
+    if not os.path.exists(training_py):
+        training_py = service_py
+    training_suite = run_command_suite(
+        name="Training Pipeline & Model Promotion Lifecycle Suite (15 tests)",
+        cmd=[training_py, "-m", "unittest", "discover", "-s", "tests/training"]
+    )
+    results.append(training_suite)
+
     total_duration = time.time() - start_time
     passed_count = sum(1 for r in results if r.get("success", False))
     total_count = len(results)
