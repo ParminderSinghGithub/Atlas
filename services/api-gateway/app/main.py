@@ -111,12 +111,40 @@ async def _probe_single_service(
     url: str,
     is_critical: bool = True
 ) -> Dict[str, Any]:
-    """Probe a single downstream service and measure latency."""
+    """Probe a single downstream service and verify actual readiness."""
     t0 = time.time()
     try:
         resp = await client.get(url)
+        if resp.status_code == 404:
+            # Try alternate health path
+            alt_url = url.replace("/api/v1/health", "/health") if "/api/v1/health" in url else url.replace("/health", "/api/v1/health")
+            if alt_url != url:
+                try:
+                    resp = await client.get(alt_url)
+                except Exception:
+                    pass
+
         elapsed_ms = round((time.time() - t0) * 1000, 2)
         if resp.status_code in (200, 204):
+            # Inspect body to ensure database/dependencies are ready
+            body = {}
+            try:
+                body = resp.json()
+            except Exception:
+                pass
+
+            # If service reported unhealthy status or disconnected DB, mark warming_up
+            if isinstance(body, dict):
+                if body.get("status") == "unhealthy" or body.get("database") == "disconnected" or body.get("db") == "disconnected":
+                    return {
+                        "name": name,
+                        "status": "warming_up",
+                        "latency_ms": elapsed_ms,
+                        "critical": is_critical,
+                        "status_code": resp.status_code,
+                        "detail": "Database initializing",
+                    }
+
             return {
                 "name": name,
                 "status": "ready",

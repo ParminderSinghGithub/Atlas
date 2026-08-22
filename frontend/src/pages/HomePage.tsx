@@ -78,10 +78,10 @@ export const HomePage: React.FC = () => {
         <div className="bg-slate-900 text-white rounded-2xl px-6 py-6 sm:px-8 sm:py-7 shadow-md border border-slate-800 relative overflow-hidden">
           <div className="relative z-10 max-w-3xl">
             <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white mb-2">
-              Personalized Recommendations & Product Discovery
+              Personalized Recommendations
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 font-normal leading-relaxed">
-              Explore catalog products ranked by session interaction, content similarity, and user preference.
+              Discover products selected from your browsing activity and preferences.
             </p>
           </div>
         </div>
@@ -120,12 +120,12 @@ export const HomePage: React.FC = () => {
               Recommended For You
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Products ranked by browsing context and relevance.
+              Your personalized picks.
             </p>
           </div>
           {recommendations.length > 0 && (
             <span className="hidden sm:inline-block text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">
-              {recommendations.length} recommended items
+              {recommendations.length} items
             </span>
           )}
         </div>

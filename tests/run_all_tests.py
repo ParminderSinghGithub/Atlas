@@ -233,11 +233,18 @@ def main():
     )
     results.append(tuning_suite)
 
-    # 4. OpenAPI Validation
+    # 4. API Gateway Readiness Coordinator & Catalog Proxy Unit Tests
+    gateway_suite = run_command_suite(
+        name="API Gateway Readiness Coordinator & Catalog Proxy Suite (8 tests)",
+        cmd=[sys.executable, "-m", "unittest", "tests/gateway/test_readiness_and_catalog_unit.py"]
+    )
+    results.append(gateway_suite)
+
+    # 5. OpenAPI Validation
     openapi_res = validate_fastapi_openapis()
     results.append(openapi_res)
 
-    # 5. Frontend Production Build & TypeScript Typecheck
+    # 6. Frontend Production Build & TypeScript Typecheck
     npm_cmd = ["npm.cmd", "run", "build"] if sys.platform == "win32" else ["npm", "run", "build"]
     frontend_suite = run_command_suite(
         name="Frontend Production Build & Typecheck (Vite + TS)",

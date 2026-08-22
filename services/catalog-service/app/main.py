@@ -1,7 +1,7 @@
 """
 FastAPI application entry point for Product Catalog Service.
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from sqlalchemy import text
@@ -73,12 +73,18 @@ app.include_router(sellers.router, prefix=settings.API_V1_PREFIX)
 app.include_router(events.router)
 
 
+@app.get("/health")
+def health_root(db = Depends(health.get_db)):
+    """Root health check for catalog service."""
+    return health.health_check(db=db)
+
+
 @app.get("/")
 def root():
     """Root endpoint redirect to docs."""
     return {
         "service": "Product Catalog Service",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "docs": "/docs",
         "health": f"{settings.API_V1_PREFIX}/health"
     }
