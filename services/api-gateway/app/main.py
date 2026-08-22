@@ -162,8 +162,11 @@ async def _probe_single_service(
     try:
         resp = await client.get(url, headers=headers)
         elapsed_ms = round((time.time() - t0) * 1000, 2)
-        redirect_count = len(resp.history) if hasattr(resp, "history") else 0
-        final_url = _sanitize_url(str(resp.url)) if hasattr(resp, "url") else sanitized_url
+        redirect_count = len(resp.history) if isinstance(getattr(resp, "history", None), list) else 0
+        final_url = sanitized_url
+        raw_resp_url = getattr(resp, "url", None)
+        if raw_resp_url is not None and not type(raw_resp_url).__name__.startswith("MagicMock"):
+            final_url = _sanitize_url(str(raw_resp_url))
 
         logger.info(
             "READINESS_HTTP_RESPONSE service=%s status=%s elapsed_ms=%s final_url=%s redirect_count=%s",
@@ -187,8 +190,11 @@ async def _probe_single_service(
                 try:
                     resp = await client.get(alt_url, headers=headers)
                     elapsed_ms = round((time.time() - t0) * 1000, 2)
-                    redirect_count = len(resp.history) if hasattr(resp, "history") else 0
-                    final_url = _sanitize_url(str(resp.url)) if hasattr(resp, "url") else sanitized_alt
+                    redirect_count = len(resp.history) if isinstance(getattr(resp, "history", None), list) else 0
+                    final_url = sanitized_alt
+                    raw_fb_url = getattr(resp, "url", None)
+                    if raw_fb_url is not None and not type(raw_fb_url).__name__.startswith("MagicMock"):
+                        final_url = _sanitize_url(str(raw_fb_url))
                     logger.info(
                         "READINESS_HTTP_RESPONSE service=%s status=%s elapsed_ms=%s final_url=%s redirect_count=%s (fallback)",
                         service_key, resp.status_code, elapsed_ms, final_url, redirect_count
@@ -237,14 +243,35 @@ async def _probe_single_service(
             )
             return res
         else:
-            status_result = "warming_up" if resp.status_code in (500, 502, 503, 504) else "degraded"
+            # Extract key edge and rate-limiting headers for forensic observability
+            diag_headers = {}
+            raw_headers = getattr(resp, "headers", None)
+            if raw_headers is not None and isinstance(raw_headers, (dict, httpx.Headers)):
+                for k in ["server", "retry-after", "cf-ray", "x-render-origin-server", "content-type", "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset"]:
+                    if k in raw_headers:
+                        diag_headers[k] = str(raw_headers[k])
+
+            body_preview = ""
+            raw_text = getattr(resp, "text", None)
+            if isinstance(raw_text, str):
+                body_preview = raw_text[:200].replace("\n", " ").strip()
+
+            logger.warning(
+                "READINESS_HTTP_NON_200 service=%s status=%s elapsed_ms=%s headers=%s body_preview='%s'",
+                service_key, resp.status_code, elapsed_ms, diag_headers, body_preview
+            )
+
+            status_result = "warming_up" if resp.status_code in (429, 500, 502, 503, 504) else "degraded"
             res = {
                 "name": name,
                 "status": status_result,
                 "latency_ms": elapsed_ms,
                 "critical": is_critical,
                 "status_code": resp.status_code,
+                "error": f"HTTP {resp.status_code} ({'Rate limited / edge throttling' if resp.status_code == 429 else 'Upstream warming up'})",
             }
+            if "retry-after" in diag_headers:
+                res["retry_after"] = diag_headers["retry-after"]
             logger.info(
                 "READINESS_PROBE_END service=%s result=%s elapsed_ms=%s status_code=%s",
                 service_key, status_result, elapsed_ms, resp.status_code

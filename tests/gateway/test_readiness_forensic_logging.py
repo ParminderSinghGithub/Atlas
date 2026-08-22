@@ -166,6 +166,55 @@ class TestForensicLoggingAndDispatch(unittest.IsolatedAsyncioTestCase):
         joined_logs = "\n".join(captured.output)
         self.assertIn("redirect_count=1", joined_logs)
 
+    @patch("app.main.httpx.AsyncClient")
+    async def test_http_429_rate_limited_diagnostic_logging_and_warming_status(self, mock_client_cls):
+        """
+        Verify that an HTTP 429 Too Many Requests (edge rate limiting) response:
+        - Logs READINESS_HTTP_NON_200 with headers (retry-after, server, cf-ray) and body preview.
+        - Categorizes the service as 'warming_up' with 'Rate limited / edge throttling' error.
+        - Includes retry_after in response payload if provided.
+        """
+        mock_instance = AsyncMock()
+        mock_instance.__aenter__.return_value = mock_instance
+        mock_client_cls.return_value = mock_instance
+
+        async def intercept_get(url, headers=None, **kwargs):
+            resp = MagicMock(spec=httpx.Response)
+            if "catalog" in str(url) or "user" in str(url):
+                resp.status_code = 429
+                resp.headers = {
+                    "server": "cloudflare",
+                    "retry-after": "30",
+                    "cf-ray": "8bf123456789",
+                    "content-type": "text/html",
+                }
+                resp.text = "<html><body>Error 429: Too Many Requests</body></html>"
+            else:
+                resp.status_code = 200
+                resp.headers = {"content-type": "application/json"}
+                resp.json.return_value = {"status": "healthy"}
+                resp.text = '{"status": "healthy"}'
+            resp.history = []
+            resp.url = httpx.URL(str(url))
+            return resp
+
+        mock_instance.get = intercept_get
+
+        with self.assertLogs("api_gateway.readiness", level="INFO") as captured:
+            res = await system_readiness(force_refresh=True)
+
+        joined_logs = "\n".join(captured.output)
+
+        self.assertIn("READINESS_HTTP_NON_200 service=catalog_service status=429", joined_logs)
+        self.assertIn("server': 'cloudflare'", joined_logs)
+        self.assertIn("retry-after': '30'", joined_logs)
+        self.assertIn("READINESS_PROBE_END service=catalog_service result=warming_up", joined_logs)
+
+        self.assertEqual(res["services"]["catalog_service"]["status"], "warming_up")
+        self.assertEqual(res["services"]["catalog_service"]["status_code"], 429)
+        self.assertEqual(res["services"]["catalog_service"]["retry_after"], "30")
+        self.assertEqual(res["status"], "warming_up")
+
 
 if __name__ == "__main__":
     unittest.main()

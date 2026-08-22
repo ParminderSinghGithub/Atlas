@@ -174,7 +174,11 @@ class TestReadinessRuntimeControlFlow(unittest.IsolatedAsyncioTestCase):
         async def intercept_get(url, headers=None, **kwargs):
             resp = MagicMock(spec=httpx.Response)
             resp.status_code = 503
+            resp.headers = {"content-type": "application/json"}
+            resp.text = '{"detail": "Container starting"}'
             resp.json.return_value = {"detail": "Container starting"}
+            resp.history = []
+            resp.url = httpx.URL(str(url))
             return resp
 
         mock_instance.get = intercept_get
