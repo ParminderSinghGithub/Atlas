@@ -15,7 +15,7 @@ export const Footer: React.FC = () => {
               <span className="text-lg font-bold text-white tracking-tight">Atlas</span>
             </div>
             <p className="text-xs sm:text-sm text-slate-400 max-w-sm leading-relaxed">
-              Modern product discovery and recommendation system powered by multi-stage retrieval, session intent tuning, and catalog intelligence.
+              Personalized product discovery and recommendations built around browsing context and user preferences.
             </p>
           </div>
 
@@ -27,7 +27,7 @@ export const Footer: React.FC = () => {
                 <Link to="/" className="hover:text-white transition-colors">Home</Link>
               </li>
               <li>
-                <Link to="/products" className="hover:text-white transition-colors">Catalog Products</Link>
+                <Link to="/products" className="hover:text-white transition-colors">Catalog</Link>
               </li>
               <li>
                 <Link to="/cart" className="hover:text-white transition-colors">Shopping Cart</Link>
@@ -41,7 +41,7 @@ export const Footer: React.FC = () => {
             <ul className="space-y-2 text-xs sm:text-sm">
               <li>
                 <a
-                  href="https://github.com/ParminderSinghGithub"
+                  href="https://github.com/ParminderSinghGithub/Atlas"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-white transition-colors flex items-center gap-1.5"
@@ -60,8 +60,7 @@ export const Footer: React.FC = () => {
         </div>
 
         <div className="pt-8 border-t border-slate-900 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-slate-500">
-          <p>© {new Date().getFullYear()} Atlas. Engineered by Parminder Singh.</p>
-          <p>Production recommendation platform.</p>
+          <p>© 2026 Atlas. Engineered by Parminder Singh.</p>
         </div>
       </div>
     </footer>
