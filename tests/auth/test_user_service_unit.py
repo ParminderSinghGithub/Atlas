@@ -246,6 +246,46 @@ class TestUserServiceUnit(unittest.TestCase):
         new_login_res = login(new_login_req, db=self.db)
         self.assertIsNotNone(new_login_res.token)
 
+    def test_email_delivery_mechanisms(self):
+        """Test SMTP, API, and fallback email delivery functions."""
+        from unittest.mock import patch, MagicMock
+        from app.core.email import send_password_reset_email
+        from app.core.config import settings
+
+        # 1. Unconfigured fallback
+        with patch.object(settings, "smtp_host", None), \
+             patch.object(settings, "resend_api_key", None):
+            res = send_password_reset_email("test@example.com", "123456", "Test User")
+            self.assertTrue(res)
+
+        # 2. Mock SMTP delivery
+        with patch.object(settings, "smtp_host", "smtp.gmail.com"), \
+             patch.object(settings, "smtp_user", "sender@gmail.com"), \
+             patch.object(settings, "smtp_password", "app_password_123"), \
+             patch.object(settings, "smtp_port", 587), \
+             patch.object(settings, "smtp_use_tls", True), \
+             patch.object(settings, "resend_api_key", None), \
+             patch("smtplib.SMTP") as mock_smtp:
+            mock_server = MagicMock()
+            mock_smtp.return_value.__enter__.return_value = mock_server
+
+            res = send_password_reset_email("recipient@example.com", "654321", "Alice")
+            self.assertTrue(res)
+            mock_server.starttls.assert_called_once()
+            mock_server.login.assert_called_once_with("sender@gmail.com", "app_password_123")
+            mock_server.sendmail.assert_called_once()
+
+        # 3. Mock Resend API delivery
+        with patch.object(settings, "resend_api_key", "re_test_key_123"), \
+             patch("urllib.request.urlopen") as mock_urlopen:
+            mock_resp = MagicMock()
+            mock_resp.status = 200
+            mock_urlopen.return_value.__enter__.return_value = mock_resp
+
+            res = send_password_reset_email("api_user@example.com", "999888", "Bob")
+            self.assertTrue(res)
+            mock_urlopen.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

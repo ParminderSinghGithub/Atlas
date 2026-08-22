@@ -31,13 +31,16 @@ class Settings(BaseSettings):
     # Password Reset & Recovery Configuration
     reset_token_expiration_minutes: int = 15
     
-    # Optional SMTP Email Configuration
+    # Optional Email Configuration (SMTP / Resend)
     smtp_host: Optional[str] = None
     smtp_port: int = 587
     smtp_user: Optional[str] = None
     smtp_password: Optional[str] = None
-    smtp_from_email: str = "noreply@atlas.local"
+    smtp_from_email: Optional[str] = None
     smtp_use_tls: bool = True
+    
+    resend_api_key: Optional[str] = None
+    resend_from_email: Optional[str] = "onboarding@resend.dev"
     
     # Password Hashing
     bcrypt_rounds: int = 10
