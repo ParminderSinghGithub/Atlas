@@ -9,6 +9,8 @@ Unified gateway orchestrating requests across:
 """
 import asyncio
 import time
+import logging
+from urllib.parse import urlparse
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
@@ -16,6 +18,13 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
+
+# Configure structured readiness logger
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+)
+logger = logging.getLogger("api_gateway.readiness")
 
 from app.core import settings
 from app.core.config import (
@@ -113,6 +122,18 @@ async def health():
     }
 
 
+def _sanitize_url(url: str) -> str:
+    """Sanitize URL to ensure credentials/query parameters are stripped for safe diagnostic logging."""
+    try:
+        parsed = urlparse(url)
+        netloc = parsed.hostname or ""
+        if parsed.port:
+            netloc = f"{netloc}:{parsed.port}"
+        return f"{parsed.scheme}://{netloc}{parsed.path}"
+    except Exception:
+        return url
+
+
 async def _probe_single_service(
     client: httpx.AsyncClient,
     service_key: str,
@@ -120,26 +141,64 @@ async def _probe_single_service(
     url: str,
     is_critical: bool = True
 ) -> Dict[str, Any]:
-    """Probe a single downstream service and verify actual readiness."""
+    """Probe a single downstream service and verify actual readiness with structured diagnostic logging."""
     t0 = time.time()
+    sanitized_url = _sanitize_url(url)
+    iso_now = datetime.now(timezone.utc).isoformat()
+    logger.info(
+        "READINESS_PROBE_START service=%s target=%s timestamp=%s",
+        service_key, sanitized_url, iso_now
+    )
+
     headers = {"Accept": "application/json", "User-Agent": "Atlas-API-Gateway/2.0"}
+    timeout_s = getattr(client.timeout, "read", settings.PROBE_TIMEOUT_SECONDS)
+    follow_redirects = getattr(client, "follow_redirects", True)
+
+    logger.info(
+        "READINESS_HTTP_DISPATCH service=%s method=GET target=%s timeout=%s follow_redirects=%s",
+        service_key, sanitized_url, timeout_s, follow_redirects
+    )
+
     try:
         resp = await client.get(url, headers=headers)
+        elapsed_ms = round((time.time() - t0) * 1000, 2)
+        redirect_count = len(resp.history) if hasattr(resp, "history") else 0
+        final_url = _sanitize_url(str(resp.url)) if hasattr(resp, "url") else sanitized_url
+
+        logger.info(
+            "READINESS_HTTP_RESPONSE service=%s status=%s elapsed_ms=%s final_url=%s redirect_count=%s",
+            service_key, resp.status_code, elapsed_ms, final_url, redirect_count
+        )
+
         if resp.status_code == 404:
             # Try alternate health path cleanly
+            alt_url = None
             if "/api/v1/catalog/health" in url:
                 alt_url = url.replace("/api/v1/catalog/health", "/health")
             elif "/health" in url:
                 alt_url = url.replace("/health", "/api/v1/catalog/health")
-            else:
-                alt_url = url
-            if alt_url != url:
+
+            if alt_url and alt_url != url:
+                sanitized_alt = _sanitize_url(alt_url)
+                logger.info(
+                    "READINESS_HTTP_DISPATCH service=%s method=GET target=%s (fallback_attempt)",
+                    service_key, sanitized_alt
+                )
                 try:
                     resp = await client.get(alt_url, headers=headers)
-                except Exception:
-                    pass
+                    elapsed_ms = round((time.time() - t0) * 1000, 2)
+                    redirect_count = len(resp.history) if hasattr(resp, "history") else 0
+                    final_url = _sanitize_url(str(resp.url)) if hasattr(resp, "url") else sanitized_alt
+                    logger.info(
+                        "READINESS_HTTP_RESPONSE service=%s status=%s elapsed_ms=%s final_url=%s redirect_count=%s (fallback)",
+                        service_key, resp.status_code, elapsed_ms, final_url, redirect_count
+                    )
+                except Exception as fb_err:
+                    logger.warning(
+                        "READINESS_HTTP_ERROR service=%s fallback_exception_type=%s exception=%s",
+                        service_key, type(fb_err).__name__, str(fb_err)
+                    )
 
-        elapsed_ms = round((time.time() - t0) * 1000, 2)
         if resp.status_code in (200, 204):
             # Inspect body to ensure database/dependencies are ready
             body = {}
@@ -151,7 +210,7 @@ async def _probe_single_service(
             # If service reported unhealthy status or disconnected DB, mark warming_up
             if isinstance(body, dict):
                 if body.get("status") == "unhealthy" or body.get("database") == "disconnected" or body.get("db") == "disconnected":
-                    return {
+                    res = {
                         "name": name,
                         "status": "warming_up",
                         "latency_ms": elapsed_ms,
@@ -159,40 +218,145 @@ async def _probe_single_service(
                         "status_code": resp.status_code,
                         "detail": "Database initializing",
                     }
+                    logger.info(
+                        "READINESS_PROBE_END service=%s result=warming_up elapsed_ms=%s detail='Database initializing'",
+                        service_key, elapsed_ms
+                    )
+                    return res
 
-            return {
+            res = {
                 "name": name,
                 "status": "ready",
                 "latency_ms": elapsed_ms,
                 "critical": is_critical,
                 "status_code": resp.status_code,
             }
+            logger.info(
+                "READINESS_PROBE_END service=%s result=ready elapsed_ms=%s status_code=%s",
+                service_key, elapsed_ms, resp.status_code
+            )
+            return res
         else:
-            return {
+            status_result = "warming_up" if resp.status_code in (500, 502, 503, 504) else "degraded"
+            res = {
                 "name": name,
-                "status": "warming_up" if resp.status_code in (500, 502, 503, 504) else "degraded",
+                "status": status_result,
                 "latency_ms": elapsed_ms,
                 "critical": is_critical,
                 "status_code": resp.status_code,
             }
-    except (httpx.TimeoutException, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError, httpx.RemoteProtocolError, httpx.NetworkError) as e:
+            logger.info(
+                "READINESS_PROBE_END service=%s result=%s elapsed_ms=%s status_code=%s",
+                service_key, status_result, elapsed_ms, resp.status_code
+            )
+            return res
+
+    except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout, httpx.TimeoutException) as e:
         elapsed_ms = round((time.time() - t0) * 1000, 2)
-        return {
+        exc_type = type(e).__name__
+        logger.warning(
+            "READINESS_HTTP_ERROR service=%s exception_type=%s exception=%s elapsed_ms=%s",
+            service_key, exc_type, str(e), elapsed_ms
+        )
+        res = {
             "name": name,
             "status": "warming_up",
             "latency_ms": elapsed_ms,
             "critical": is_critical,
-            "error": f"Container warming up ({type(e).__name__})",
+            "error": f"Container warming up ({exc_type})",
         }
+        logger.info(
+            "READINESS_PROBE_END service=%s result=warming_up elapsed_ms=%s error=%s",
+            service_key, elapsed_ms, exc_type
+        )
+        return res
+
+    except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.NetworkError) as e:
+        elapsed_ms = round((time.time() - t0) * 1000, 2)
+        exc_type = type(e).__name__
+        logger.warning(
+            "READINESS_HTTP_ERROR service=%s exception_type=%s exception=%s elapsed_ms=%s",
+            service_key, exc_type, str(e), elapsed_ms
+        )
+        res = {
+            "name": name,
+            "status": "warming_up",
+            "latency_ms": elapsed_ms,
+            "critical": is_critical,
+            "error": f"Container warming up ({exc_type})",
+        }
+        logger.info(
+            "READINESS_PROBE_END service=%s result=warming_up elapsed_ms=%s error=%s",
+            service_key, elapsed_ms, exc_type
+        )
+        return res
+
+    except httpx.HTTPStatusError as e:
+        elapsed_ms = round((time.time() - t0) * 1000, 2)
+        exc_type = type(e).__name__
+        logger.warning(
+            "READINESS_HTTP_ERROR service=%s exception_type=%s exception=%s elapsed_ms=%s",
+            service_key, exc_type, str(e), elapsed_ms
+        )
+        res = {
+            "name": name,
+            "status": "degraded",
+            "latency_ms": elapsed_ms,
+            "critical": is_critical,
+            "error": str(e),
+        }
+        logger.info(
+            "READINESS_PROBE_END service=%s result=degraded elapsed_ms=%s",
+            service_key, elapsed_ms
+        )
+        return res
+
+    except httpx.TooManyRedirects as e:
+        elapsed_ms = round((time.time() - t0) * 1000, 2)
+        logger.warning(
+            "READINESS_HTTP_ERROR service=%s exception_type=TooManyRedirects exception=%s elapsed_ms=%s",
+            service_key, str(e), elapsed_ms
+        )
+        res = {
+            "name": name,
+            "status": "unavailable",
+            "latency_ms": elapsed_ms,
+            "critical": is_critical,
+            "error": "Too many redirects",
+        }
+        logger.info(
+            "READINESS_PROBE_END service=%s result=unavailable elapsed_ms=%s",
+            service_key, elapsed_ms
+        )
+        return res
+
+    except asyncio.CancelledError:
+        elapsed_ms = round((time.time() - t0) * 1000, 2)
+        logger.warning(
+            "READINESS_HTTP_ERROR service=%s exception_type=CancelledError exception='Probe task cancelled' elapsed_ms=%s",
+            service_key, elapsed_ms
+        )
+        raise
+
     except Exception as e:
         elapsed_ms = round((time.time() - t0) * 1000, 2)
-        return {
+        exc_type = type(e).__name__
+        logger.error(
+            "READINESS_HTTP_ERROR service=%s exception_type=%s exception=%s elapsed_ms=%s",
+            service_key, exc_type, str(e), elapsed_ms
+        )
+        res = {
             "name": name,
             "status": "unavailable",
             "latency_ms": elapsed_ms,
             "critical": is_critical,
             "error": str(e),
         }
+        logger.info(
+            "READINESS_PROBE_END service=%s result=unavailable elapsed_ms=%s error=%s",
+            service_key, elapsed_ms, exc_type
+        )
+        return res
 
 
 @app.get("/api/v1/ready", tags=["Health & Readiness"], summary="Coordinated System Readiness & Warm-up")
@@ -230,6 +394,7 @@ async def system_readiness(force_refresh: bool = False):
             if cache_age < max_cache_age:
                 return _readiness_cache["data"]
 
+        t_dispatch_start = time.time()
         rec_url = get_recommendation_service_url()
         cat_url = get_catalog_service_url()
         user_url = get_user_service_url()
@@ -241,6 +406,9 @@ async def system_readiness(force_refresh: bool = False):
             ("user_service", "User Service", f"{user_url}/api/auth/ping", True),
             ("ml_inference_service", "ML Inference Engine", f"{ml_url}/health", False),
         ]
+
+        targets_dict = {key: _sanitize_url(url) for key, name, url, critical in probes}
+        logger.info("READINESS_DISPATCH_START targets=%s", targets_dict)
 
         timeout = httpx.Timeout(settings.PROBE_TIMEOUT_SECONDS)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
@@ -309,6 +477,21 @@ async def system_readiness(force_refresh: bool = False):
 
         _readiness_cache["data"] = response_data
         _readiness_cache["timestamp"] = time.time()
+
+        logger.info(
+            "READINESS_DISPATCH_RESULTS catalog=%s user=%s recommendation=%s ml=%s",
+            services_dict.get("catalog_service", {}).get("status"),
+            services_dict.get("user_service", {}).get("status"),
+            services_dict.get("recommendation_service", {}).get("status"),
+            services_dict.get("ml_inference_service", {}).get("status"),
+        )
+
+        total_elapsed_ms = round((time.time() - t_dispatch_start) * 1000, 2)
+        logger.info(
+            "READINESS_RESPONSE status=%s overall_state=%s total_elapsed_ms=%s",
+            overall_status, overall_status, total_elapsed_ms
+        )
+
         return response_data
 
 
