@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { catalogService } from '../services/catalogService';
 import type { Product } from '../services/catalogService';
@@ -13,7 +13,9 @@ import { Toast } from '../components/ui/Toast';
 
 export const ProductDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { userId } = useAuth();
+  const { userId, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [product, setProduct] = useState<Product | null>(null);
   const [similarProducts, setSimilarProducts] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,10 +76,18 @@ export const ProductDetailPage: React.FC = () => {
   const handleAddToCart = async () => {
     if (!id) return;
 
-    setAddingToCart(true);
-    if (userId) {
-      await eventService.trackAddToCart(userId, id);
+    // Unauthenticated/guest guard: redirect to login and preserve destination
+    if (!isAuthenticated || !userId) {
+      navigate('/login', {
+        state: {
+          from: { pathname: location.pathname + location.search }
+        }
+      });
+      return;
     }
+
+    setAddingToCart(true);
+    await eventService.trackAddToCart(userId, id);
 
     // Add to local cart
     const cart = JSON.parse(localStorage.getItem('cart') || '[]');
