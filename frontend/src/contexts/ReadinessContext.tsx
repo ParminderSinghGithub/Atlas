@@ -106,7 +106,7 @@ export const ReadinessProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setReadinessState('WAKING_SERVICES');
     setProgressPercent(20);
 
-    const maxAttempts = 5;
+    const maxAttempts = 8;
     let attempt = 0;
 
     try {
@@ -115,7 +115,7 @@ export const ReadinessProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         try {
           if (attempt > 1) {
             setReadinessState('CHECKING_READINESS');
-            setProgressPercent(Math.min(30 + attempt * 14, 88));
+            setProgressPercent(Math.min(20 + attempt * 9, 88));
           }
 
           // Gentle polling using Gateway cache; timeout set to 60s
@@ -128,23 +128,24 @@ export const ReadinessProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             markEstablished();
             return;
           } else if (data.status === 'degraded') {
-            // Degraded means critical services (Catalog + Recommendation) are ready
+            // Degraded means critical services (Catalog, Recommendation, User) are ready
             setProgressPercent(100);
             setReadinessState('DEGRADED');
             markEstablished();
             return;
           } else if (data.status === 'warming_up') {
-            // Progressive backoff to allow sleeping Render containers time to boot
-            const backoffMs = Math.min(3000 + attempt * 1500, 8000);
-            setProgressPercent(Math.min(25 + attempt * 12, 85));
+            // Progressive backoff to allow sleeping Render containers time to boot (~25-35s)
+            const backoffMs = Math.min(3000 + attempt * 1000, 7000);
+            setProgressPercent(Math.min(20 + attempt * 8, 85));
             await new Promise((res) => setTimeout(res, backoffMs));
           } else {
-            // Unavailable / other
-            await new Promise((res) => setTimeout(res, 4000));
+            // Unavailable / other transient state
+            const backoffMs = Math.min(3500 + attempt * 1000, 7500);
+            await new Promise((res) => setTimeout(res, backoffMs));
           }
         } catch (err) {
           console.warn(`[READINESS] Attempt ${attempt} failed, backing off...`, err);
-          const backoffMs = Math.min(4000 + attempt * 1500, 8000);
+          const backoffMs = Math.min(3500 + attempt * 1000, 7500);
           if (attempt < maxAttempts) {
             await new Promise((res) => setTimeout(res, backoffMs));
           }

@@ -86,16 +86,6 @@ export const StartupExperience: React.FC = () => {
             </div>
           </div>
         )}
-
-        {/* Skip action for impatient users if waking takes a few seconds */}
-        {!isFailed && progressPercent >= 45 && (
-          <button
-            onClick={skipToDegraded}
-            className="text-xs text-slate-400 hover:text-white transition-colors underline underline-offset-4"
-          >
-            Skip directly to Catalog &rarr;
-          </button>
-        )}
       </div>
     </div>
   );

@@ -21,6 +21,9 @@ from app.core import settings
 from app.core.config import (
     get_recommendation_service_url,
     get_recommendation_service_url_source,
+    get_catalog_service_url,
+    get_user_service_url,
+    get_ml_inference_service_url,
     validate_service_url,
 )
 
@@ -67,14 +70,20 @@ _readiness_lock = asyncio.Lock()
 @app.on_event("startup")
 async def startup_diagnostics():
     """Log and validate downstream service URL configuration."""
-    resolved_url = get_recommendation_service_url()
+    rec_url = get_recommendation_service_url()
+    cat_url = get_catalog_service_url()
+    user_url = get_user_service_url()
+    ml_url = get_ml_inference_service_url()
     url_source = get_recommendation_service_url_source()
     print(f"Atlas API Gateway 2.0 starting up...")
-    print(f"Recommendation service URL: {resolved_url} ({url_source})")
-    print(f"Catalog service URL: {settings.CATALOG_SERVICE_URL}")
-    print(f"User service URL: {settings.USER_SERVICE_URL}")
-    print(f"ML Inference service URL: {settings.ML_INFERENCE_SERVICE_URL}")
-    validate_service_url(resolved_url, "RECOMMENDATION_SERVICE_URL")
+    print(f"Recommendation service URL: {rec_url} ({url_source})")
+    print(f"Catalog service URL: {cat_url}")
+    print(f"User service URL: {user_url}")
+    print(f"ML Inference service URL: {ml_url}")
+    validate_service_url(rec_url, "RECOMMENDATION_SERVICE_URL")
+    validate_service_url(cat_url, "CATALOG_SERVICE_URL")
+    validate_service_url(user_url, "USER_SERVICE_URL")
+    validate_service_url(ml_url, "ML_INFERENCE_SERVICE_URL")
 
 
 # CORS middleware
@@ -116,8 +125,13 @@ async def _probe_single_service(
     try:
         resp = await client.get(url)
         if resp.status_code == 404:
-            # Try alternate health path
-            alt_url = url.replace("/api/v1/health", "/health") if "/api/v1/health" in url else url.replace("/health", "/api/v1/health")
+            # Try alternate health path cleanly
+            if "/api/v1/catalog/health" in url:
+                alt_url = url.replace("/api/v1/catalog/health", "/health")
+            elif "/health" in url:
+                alt_url = url.replace("/health", "/api/v1/catalog/health")
+            else:
+                alt_url = url
             if alt_url != url:
                 try:
                     resp = await client.get(alt_url)
@@ -155,19 +169,19 @@ async def _probe_single_service(
         else:
             return {
                 "name": name,
-                "status": "warming_up" if resp.status_code in (502, 503, 504) else "degraded",
+                "status": "warming_up" if resp.status_code in (500, 502, 503, 504) else "degraded",
                 "latency_ms": elapsed_ms,
                 "critical": is_critical,
                 "status_code": resp.status_code,
             }
-    except httpx.TimeoutException:
+    except (httpx.TimeoutException, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError, httpx.RemoteProtocolError, httpx.NetworkError) as e:
         elapsed_ms = round((time.time() - t0) * 1000, 2)
         return {
             "name": name,
             "status": "warming_up",
             "latency_ms": elapsed_ms,
             "critical": is_critical,
-            "error": "Probe timeout (container warming up)",
+            "error": f"Container warming up ({type(e).__name__})",
         }
     except Exception as e:
         elapsed_ms = round((time.time() - t0) * 1000, 2)
@@ -193,9 +207,9 @@ async def system_readiness(force_refresh: bool = False):
     - ML Inference Service (OCI)
     
     Returns structured status indicating overall readiness:
-    - 'ready': All critical dependencies are responsive.
-    - 'warming_up': One or more services are waking from cold start.
-    - 'degraded': Optional service is offline, but core browsing functions.
+    - 'ready': All core and optional dependencies are responsive.
+    - 'warming_up': One or more critical services are waking from cold start.
+    - 'degraded': Core services (Catalog, Recommendation, User) are ready, optional ML engine is waking.
     - 'unavailable': Critical dependencies unreachable.
     """
     now = time.time()
@@ -210,14 +224,14 @@ async def system_readiness(force_refresh: bool = False):
                 return _readiness_cache["data"]
 
         rec_url = get_recommendation_service_url()
-        cat_url = settings.CATALOG_SERVICE_URL.rstrip("/")
-        user_url = settings.USER_SERVICE_URL.rstrip("/")
-        ml_url = settings.ML_INFERENCE_SERVICE_URL.rstrip("/")
+        cat_url = get_catalog_service_url()
+        user_url = get_user_service_url()
+        ml_url = get_ml_inference_service_url()
 
         probes = [
             ("catalog_service", "Catalog Service", f"{cat_url}/api/v1/catalog/health", True),
             ("recommendation_service", "Recommendation Service", f"{rec_url}/health", True),
-            ("user_service", "User Service", f"{user_url}/api/auth/ping", False),
+            ("user_service", "User Service", f"{user_url}/api/auth/ping", True),
             ("ml_inference_service", "ML Inference Engine", f"{ml_url}/health", False),
         ]
 
@@ -259,7 +273,7 @@ async def system_readiness(force_refresh: bool = False):
         if ready_count == total_count:
             overall_status = "ready"
         elif critical_ready:
-            overall_status = "degraded"  # Core catalog & recommendations ready
+            overall_status = "degraded"  # All critical services ready (Catalog, Recommendation, User)
         elif critical_warming:
             overall_status = "warming_up"
         else:
@@ -287,7 +301,8 @@ async def system_readiness(force_refresh: bool = False):
 async def proxy_auth(path: str, request: Request):
     """Proxy all /api/auth/* requests to user-service."""
     async with httpx.AsyncClient() as client:
-        url = f"{settings.USER_SERVICE_URL}/api/auth/{path}"
+        base_url = get_user_service_url()
+        url = f"{base_url}/api/auth/{path}"
         headers = dict(request.headers)
         headers.pop("host", None)
         
@@ -315,18 +330,19 @@ async def proxy_auth(path: str, request: Request):
 async def proxy_catalog(request: Request, path: str = ""):
     """Proxy all catalog and taxonomy requests to catalog-service."""
     async with httpx.AsyncClient() as client:
+        base_url = get_catalog_service_url()
         req_path = request.url.path
         if req_path.startswith("/api/v1/catalog/"):
             sub = req_path[len("/api/v1/catalog/"):]
-            url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/api/v1/catalog/{sub}"
+            url = f"{base_url.rstrip('/')}/api/v1/catalog/{sub}"
         elif req_path.startswith("/api/v1/products"):
             sub = req_path[len("/api/v1/products"):]
-            url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/api/v1/catalog/products{sub}"
+            url = f"{base_url.rstrip('/')}/api/v1/catalog/products{sub}"
         elif req_path.startswith("/api/v1/categories"):
             sub = req_path[len("/api/v1/categories"):]
-            url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/api/v1/catalog/categories{sub}"
+            url = f"{base_url.rstrip('/')}/api/v1/catalog/categories{sub}"
         else:
-            url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/api/v1/catalog/{path}"
+            url = f"{base_url.rstrip('/')}/api/v1/catalog/{path}"
 
         headers = dict(request.headers)
         headers.pop("host", None)
@@ -415,8 +431,9 @@ async def proxy_session_track(request: Request):
 async def proxy_events(request: Request, path: str = ""):
     """Proxy all event ingestion requests to catalog-service."""
     async with httpx.AsyncClient() as client:
+        base_url = get_catalog_service_url()
         target_path = f"/events/{path}" if path else "/events"
-        url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}{target_path}"
+        url = f"{base_url}{target_path}"
         headers = dict(request.headers)
         headers.pop("host", None)
         
@@ -433,7 +450,5 @@ async def proxy_events(request: Request, path: str = ""):
                 status_code=response.status_code,
                 headers=dict(response.headers),
             )
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)

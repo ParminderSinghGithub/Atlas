@@ -235,12 +235,19 @@ def main():
 
     # 4. API Gateway Readiness Coordinator & Catalog Proxy Unit Tests
     gateway_suite = run_command_suite(
-        name="API Gateway Readiness Coordinator & Catalog Proxy Suite (8 tests)",
+        name="API Gateway Readiness Coordinator & Catalog Proxy Suite",
         cmd=[sys.executable, "-m", "unittest", "tests/gateway/test_readiness_and_catalog_unit.py"]
     )
     results.append(gateway_suite)
 
-    # 5. OpenAPI Validation
+    # 5. API Gateway Readiness End-to-End Cold-Start Simulation Suite
+    gateway_sim_suite = run_command_suite(
+        name="API Gateway Readiness End-to-End Cold-Start Simulation Suite (6 tests)",
+        cmd=[sys.executable, "-m", "unittest", "tests/gateway/test_readiness_end_to_end_simulation.py"]
+    )
+    results.append(gateway_sim_suite)
+
+    # 6. OpenAPI Validation
     openapi_res = validate_fastapi_openapis()
     results.append(openapi_res)
 

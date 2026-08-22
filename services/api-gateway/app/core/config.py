@@ -43,16 +43,31 @@ settings = Settings()
 def _normalize_service_url(url: str) -> str:
     """Normalize service base URLs for proxy construction."""
     normalized = url.strip().rstrip("/")
-    if normalized.endswith("/api/v1"):
-        normalized = normalized[: -len("/api/v1")].rstrip("/")
-    if normalized.endswith("/api"):
-        normalized = normalized[: -len("/api")].rstrip("/")
+    # Strip common path suffixes if accidentally included in environment variables
+    for suffix in ["/api/v1/catalog", "/api/v1/auth", "/api/auth", "/api/v1", "/api"]:
+        if normalized.endswith(suffix):
+            normalized = normalized[: -len(suffix)].rstrip("/")
     return normalized
 
 
 def get_recommendation_service_url() -> str:
     """Return the normalized recommendation service base URL."""
     return _normalize_service_url(settings.RECOMMENDATION_SERVICE_URL)
+
+
+def get_catalog_service_url() -> str:
+    """Return the normalized catalog service base URL."""
+    return _normalize_service_url(settings.CATALOG_SERVICE_URL)
+
+
+def get_user_service_url() -> str:
+    """Return the normalized user service base URL."""
+    return _normalize_service_url(settings.USER_SERVICE_URL)
+
+
+def get_ml_inference_service_url() -> str:
+    """Return the normalized ML inference service base URL."""
+    return _normalize_service_url(settings.ML_INFERENCE_SERVICE_URL)
 
 
 def get_recommendation_service_url_source() -> str:

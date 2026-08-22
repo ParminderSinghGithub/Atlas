@@ -117,12 +117,107 @@ class TestReadinessCoordinator(unittest.IsolatedAsyncioTestCase):
             client=mock_client,
             service_key="catalog_service",
             name="Catalog Service",
-            url="https://catalog-service-uo46.onrender.com/api/v1/health",
+            url="https://catalog-service-uo46.onrender.com/api/v1/catalog/health",
             is_critical=True,
         )
 
         self.assertEqual(res["status"], "ready")
         self.assertEqual(mock_client.get.call_count, 2)
+
+    async def test_probe_single_service_connect_error_warming_up(self):
+        """Verify connection errors during container cold-start return 'warming_up'."""
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.get.side_effect = httpx.ConnectError("Connection refused")
+
+        res = await _probe_single_service(
+            client=mock_client,
+            service_key="catalog_service",
+            name="Catalog Service",
+            url="https://catalog-service-uo46.onrender.com/api/v1/catalog/health",
+            is_critical=True,
+        )
+
+        self.assertEqual(res["status"], "warming_up")
+        self.assertIn("ConnectError", res["error"])
+
+    @patch("app.main.httpx.AsyncClient")
+    async def test_system_readiness_all_ready(self, mock_client_cls):
+        """Verify system_readiness reports 'ready' when all microservices respond ready."""
+        from app.main import system_readiness
+        mock_instance = AsyncMock()
+        mock_resp = MagicMock(spec=httpx.Response)
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"status": "healthy", "database": "connected"}
+        mock_instance.get.return_value = mock_resp
+        mock_instance.__aenter__.return_value = mock_instance
+        mock_client_cls.return_value = mock_instance
+
+        res = await system_readiness(force_refresh=True)
+        self.assertEqual(res["status"], "ready")
+        self.assertEqual(res["summary"]["ready"], 5)  # gateway + 4 downstreams
+        self.assertEqual(res["services"]["catalog_service"]["status"], "ready")
+        self.assertEqual(res["services"]["recommendation_service"]["status"], "ready")
+        self.assertEqual(res["services"]["user_service"]["status"], "ready")
+
+    @patch("app.main.httpx.AsyncClient")
+    async def test_system_readiness_warming_when_catalog_slow(self, mock_client_cls):
+        """Verify system_readiness reports 'warming_up' when Catalog is cold-starting even if Recs/User are ready."""
+        from app.main import system_readiness
+        mock_instance = AsyncMock()
+
+        def side_effect_get(url, **kwargs):
+            resp = MagicMock(spec=httpx.Response)
+            if "catalog" in url:
+                resp.status_code = 503  # Catalog container cold-booting
+                resp.json.return_value = {"status": "unhealthy"}
+            else:
+                resp.status_code = 200
+                resp.json.return_value = {"status": "healthy", "database": "connected"}
+            return resp
+
+        mock_instance.get.side_effect = side_effect_get
+        mock_instance.__aenter__.return_value = mock_instance
+        mock_client_cls.return_value = mock_instance
+
+        res = await system_readiness(force_refresh=True)
+        self.assertEqual(res["status"], "warming_up")
+        self.assertEqual(res["services"]["catalog_service"]["status"], "warming_up")
+        self.assertEqual(res["services"]["recommendation_service"]["status"], "ready")
+        self.assertEqual(res["services"]["user_service"]["status"], "ready")
+
+    @patch("app.main.httpx.AsyncClient")
+    async def test_system_readiness_degraded_when_ml_offline(self, mock_client_cls):
+        """Verify system_readiness reports 'degraded' when all critical services are ready but optional ML is warming."""
+        from app.main import system_readiness
+        mock_instance = AsyncMock()
+
+        def side_effect_get(url, **kwargs):
+            resp = MagicMock(spec=httpx.Response)
+            if "8001" in url or "ml" in url:
+                resp.status_code = 503  # ML inference engine waking up
+            else:
+                resp.status_code = 200
+                resp.json.return_value = {"status": "healthy", "database": "connected"}
+            return resp
+
+        mock_instance.get.side_effect = side_effect_get
+        mock_instance.__aenter__.return_value = mock_instance
+        mock_client_cls.return_value = mock_instance
+
+        res = await system_readiness(force_refresh=True)
+        self.assertEqual(res["status"], "degraded")
+        self.assertEqual(res["services"]["catalog_service"]["status"], "ready")
+        self.assertEqual(res["services"]["recommendation_service"]["status"], "ready")
+        self.assertEqual(res["services"]["user_service"]["status"], "ready")
+        self.assertEqual(res["services"]["ml_inference_service"]["status"], "warming_up")
+
+    def test_url_normalization_helpers(self):
+        """Verify service URL normalizers correctly strip trailing slashes and API suffixes."""
+        from app.core.config import _normalize_service_url
+        self.assertEqual(_normalize_service_url("https://catalog.onrender.com/"), "https://catalog.onrender.com")
+        self.assertEqual(_normalize_service_url("https://catalog.onrender.com/api/v1/catalog"), "https://catalog.onrender.com")
+        self.assertEqual(_normalize_service_url("https://catalog.onrender.com/api/v1"), "https://catalog.onrender.com")
+        self.assertEqual(_normalize_service_url("https://catalog.onrender.com/api"), "https://catalog.onrender.com")
 
 
 class TestCatalogAndEventRouting(unittest.IsolatedAsyncioTestCase):
