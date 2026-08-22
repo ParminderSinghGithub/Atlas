@@ -25,7 +25,7 @@ Atlas is a **cloud-native e-commerce and recommendation platform** with an integ
 - **Catalog Microservice**: Product catalog, category hierarchies, and real-time interaction event ingestion into Neon PostgreSQL.
 - **Recommendation Microservice**: Real-time multi-strategy candidate generation, session intent re-ranking via Upstash Redis, and 90-day long-term user personalization.
 - **ML Inference Microservice (OCI Host)**: Remote high-throughput model serving hosting Item-Item Co-visitation similarity and LightGBM ranking over 16 behavioral features.
-- **User & Authentication Microservice**: JWT authentication, bcrypt password hashing, and single-use 6-digit numeric OTP password recovery via Gmail SMTP (dedicated Atlas Gmail account & Google App Password).
+- **User & Authentication Microservice**: JWT authentication, bcrypt password hashing, and single-use 6-digit numeric OTP password recovery via Gmail SMTP (backend service implementation intact; email delivery is limited by Render free-tier outbound SMTP network constraints, so UI informs users to create a new account if needed).
 - **Real Product Catalog**: 2,000 curated Amazon products across 4 categories (Electronics, Cell Phones, Sports, Software).
 
 The platform bridges **offline training** (2.7M RetailRocket behavioral events) with **online serving** (Amazon product catalog) through a latent mapping layer, enabling personalized recommendations.
@@ -110,7 +110,7 @@ Final Hydrated Recommendations returned to UI (Top K: 8 items)
 | **PostgreSQL Event Ingestion** | Active | Catalog Service / Neon | **YES** | Real-time logging of views, clicks, and cart events |
 | **Coordinated Startup Gate** | Active | API Gateway (`/api/v1/ready`) | **YES** | Probes dependencies and gates UI during cold boot |
 | **Guest Cart Redirect Guard** | Active | React Frontend Auth Router | **YES** | Redirects guests to `/login` with return path |
-| **Single-Use OTP Password Reset** | Active | User Service / PostgreSQL | **YES** | 6-digit numeric OTP with 15m expiration & Gmail SMTP |
+| **Single-Use OTP Password Reset** | Backend Implemented / Free-Tier Limited | User Service / PostgreSQL | **BACKEND ONLY** | 6-digit numeric OTP with 15m expiration & Gmail SMTP implemented in service; free-tier deployment restricts outbound SMTP egress, so frontend presents informative limitation advisory |
 
 ## Architecture Overview
 

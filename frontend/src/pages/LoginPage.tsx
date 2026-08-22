@@ -7,6 +7,7 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [recoveryNotice, setRecoveryNotice] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const { login } = useAuth();
@@ -56,6 +57,35 @@ export const LoginPage: React.FC = () => {
           </div>
         )}
 
+        {recoveryNotice && (
+          <div className="bg-amber-50/90 border border-amber-200/80 text-amber-900 p-4 rounded-2xl text-xs space-y-2 mb-6">
+            <div className="flex items-start gap-2.5">
+              <svg className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="flex-1 leading-relaxed">
+                <p className="font-semibold text-amber-950">Password Recovery Notice</p>
+                <p className="mt-1 text-amber-800">
+                  Password recovery is currently unavailable on the free-tier deployment because email delivery is temporarily limited. If you need access and do not remember your password, please{' '}
+                  <Link to="/register" className="font-bold underline text-amber-950 hover:text-amber-700">
+                    create a new account
+                  </Link>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRecoveryNotice(false)}
+                className="text-amber-500 hover:text-amber-800 p-0.5 -mt-0.5 -mr-0.5 rounded-lg focus:outline-none"
+                aria-label="Dismiss notice"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">Email Address</label>
@@ -73,9 +103,13 @@ export const LoginPage: React.FC = () => {
           <div>
             <div className="flex justify-between items-center mb-1.5">
               <label className="block text-xs font-semibold text-slate-700">Password</label>
-              <Link to="/forgot-password" className="text-xs text-blue-600 hover:underline font-medium">
+              <button
+                type="button"
+                onClick={() => setRecoveryNotice(true)}
+                className="text-xs text-blue-600 hover:underline font-medium focus:outline-none"
+              >
                 Forgot password?
-              </Link>
+              </button>
             </div>
             <input
               type="password"

@@ -538,7 +538,7 @@ const api = axios.create({
 - JWT authentication (HS256 algorithm with expiration)
 - Password hashing (bcrypt, 12 rounds)
 - Single-use 6-digit numeric OTP password recovery (15-minute expiration)
-- Transactional password reset email delivery exclusively via **Gmail SMTP** (dedicated Atlas Gmail account & 16-character Google App Password with STARTTLS/TLS)
+- Transactional password reset email delivery implementation via **Gmail SMTP** (dedicated Atlas Gmail account & 16-character Google App Password with STARTTLS/TLS). *Deployment note: Outbound SMTP connectivity is restricted on the current Render free-tier environment (`[Errno 101] Network is unreachable`), so the frontend UI displays a clear free-tier deployment advisory directing users without passwords to register a new account.*
 - User profile CRUD
 
 **Endpoints**:
@@ -546,7 +546,7 @@ const api = axios.create({
 POST /api/auth/register            - Create new user account
 POST /api/auth/login               - Authenticate credentials and issue JWT
 GET  /api/auth/me                  - Retrieve authenticated user profile (Bearer token)
-POST /api/auth/forgot-password     - Generate single-use OTP and trigger email delivery
+POST /api/auth/forgot-password     - Generate single-use OTP and trigger email delivery (backend implemented)
 POST /api/auth/verify-reset-code   - Verify 6-digit OTP validity
 POST /api/auth/reset-password      - Update password using verified OTP token
 GET  /api/auth/ping                - Service liveness probe

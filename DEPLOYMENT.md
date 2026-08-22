@@ -957,10 +957,11 @@ If you run them from Render shell, use the same commands inside each service dir
 
 ### Email Delivery Configuration (Gmail SMTP)
 
-Atlas uses **Gmail SMTP** for delivering password-reset OTP verification codes:
-- **Dedicated Account**: Uses a dedicated Gmail address as the sender.
+Atlas implements **Gmail SMTP** for delivering password-reset OTP verification codes:
+- **Dedicated Account**: Configured for a dedicated Gmail address as the sender.
 - **Authentication**: Requires a Google **16-character App Password** (the account's actual login password must NOT be used).
 - **Recipient**: The user's requested email address entered during the password reset flow.
+- **Deployment Status**: Implemented in `services/user-service/app/core/email.py`. Note that outbound SMTP connectivity is blocked on the Render free-tier environment (`[Errno 101] Network is unreachable`), so the frontend UI displays a deployment limitation notice advising users to register a new account if they do not remember their credentials.
 
 **Render Environment Variables (`user-service`):**
 ```bash
@@ -974,6 +975,7 @@ SMTP_USE_TLS=True
 
 ### Render Free-Tier Limitations
 
+- **Outbound SMTP Egress**: Render free-tier web services block outbound SMTP network connections (`[Errno 101] Network is unreachable`), preventing live Gmail SMTP delivery in the free-tier deployment. The frontend login flow gracefully surfaces this limitation advisory to users.
 - Free instances are not suitable for the recommendation service's startup cost and memory footprint.
 - Private services are not available on the free plan, so the backend services must be reachable by public Render URLs.
 - The recommendation service loads ML artifacts at startup, so cold starts and memory ceilings are the main operational risk.

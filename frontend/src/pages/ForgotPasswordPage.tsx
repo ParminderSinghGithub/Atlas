@@ -96,6 +96,23 @@ export const ForgotPasswordPage: React.FC = () => {
           </p>
         </div>
 
+        <div className="bg-amber-50/90 border border-amber-200/80 text-amber-900 p-4 rounded-2xl text-xs space-y-1 mb-6">
+          <div className="flex items-start gap-2.5">
+            <svg className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="leading-relaxed">
+              <p className="font-semibold text-amber-950">Free-Tier Deployment Advisory</p>
+              <p className="mt-1 text-amber-800">
+                Password recovery is currently unavailable on the free-tier deployment because email delivery is temporarily limited. If you need access and do not remember your password, please{' '}
+                <Link to="/register" className="font-bold underline text-amber-950 hover:text-amber-700">
+                  create a new account
+                </Link>.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {error && (
           <div className="bg-rose-50 border border-rose-200/80 text-rose-700 px-4 py-3 rounded-xl text-xs font-medium mb-6">
             {error}
