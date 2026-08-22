@@ -45,6 +45,7 @@ class MLInferenceClient:
         candidate_ids: Optional[List[int]] = None,
         k: int = 100,
         model_version: Optional[str] = None,
+        strategy: Optional[str] = None,
     ) -> Optional[InferenceResponse]:
         """
         Execute an inference request against the external ML service.
@@ -55,6 +56,7 @@ class MLInferenceClient:
             candidate_ids: Optional list of candidate item IDs to re-rank
             k: Number of candidates/recommendations requested
             model_version: Optional model version tag
+            strategy: Optional explicit strategy override ('svd', 'item_similarity', 'popularity', 'auto')
 
         Returns:
             InferenceResponse on success, or None on failure/timeout/disabled.
@@ -71,6 +73,7 @@ class MLInferenceClient:
                 candidate_ids=candidate_ids,
                 k=k,
                 model_version=model_version or getattr(settings, 'model_version', None),
+                strategy=strategy,
             )
             payload = req.dict(exclude_none=True)
         except ValidationError as val_err:

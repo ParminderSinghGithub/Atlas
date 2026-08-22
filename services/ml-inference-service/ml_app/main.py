@@ -228,19 +228,38 @@ async def infer(request: InferenceRequest):
         except (ValueError, TypeError):
             logger.warning("Invalid item_id for similarity: %s", request.item_id)
 
-    # Case 3: User personalization via SVD collaborative filtering (disabled in production path)
+    # Case 3: User personalization via SVD collaborative filtering
     elif request.user_id:
-        if not settings.enable_svd_serving:
+        user_str = str(request.user_id)
+        is_explicit_svd = request.strategy == "svd"
+        
+        # Check if user_id is a production guest session or UUID
+        is_guest = user_str.startswith("guest_")
+        is_uuid_format = False
+        try:
+            from uuid import UUID
+            UUID(user_str)
+            is_uuid_format = True
+        except (ValueError, AttributeError):
+            is_uuid_format = False
+
+        # Frontend guest/UUID traffic safely bypasses SVD unless explicitly overridden
+        if not settings.enable_svd_serving or ((is_guest or is_uuid_format) and not is_explicit_svd):
             elapsed_ms = (time.time() - start_time) * 1000
+            strategy_name = "svd_disabled" if not settings.enable_svd_serving else "svd_cold_start"
             return InferenceResponse(
                 status="cold_start",
                 items=[],
-                strategy_used="svd_disabled",
+                strategy_used=strategy_name,
                 model_version=model_version,
                 execution_time_ms=round(elapsed_ms, 2)
             )
+
         svd_model = get_svd_model()
-        svd_candidates = svd_model.get_candidates(str(request.user_id), k=k)
+        if not svd_model.is_available():
+            svd_model.load()
+
+        svd_candidates = svd_model.get_candidates(user_str, k=k) if svd_model.is_available() else None
         if svd_candidates:
             candidate_ids = svd_candidates
             strategy_source = "svd"

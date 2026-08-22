@@ -170,7 +170,8 @@ async def get_recommendations(
     user_id: Optional[str] = Query(None, description="User ID for personalized recs (UUID or RetailRocket ID)"),
     product_id: Optional[str] = Query(None, description="Product ID for similar items (UUID or RetailRocket ID)"),
     k: int = Query(10, ge=1, le=50, description="Number of recommendations"),
-    include_metadata: bool = Query(False, description="Include explainability metadata")
+    include_metadata: bool = Query(False, description="Include explainability metadata"),
+    strategy: Optional[str] = Query(None, description="Optional recommendation strategy override: 'auto' (default production), 'svd', 'item_similarity', 'popularity'"),
 ):
     """
     Get personalized recommendations.
@@ -190,19 +191,22 @@ async def get_recommendations(
     """
     start_time = time.time()
     logger.info(
-        "Recommendation request: user_id=%s, product_id=%s, k=%s, include_metadata=%s",
+        "Recommendation request: user_id=%s, product_id=%s, k=%s, include_metadata=%s, strategy=%s",
         user_id,
         product_id,
         k,
         include_metadata,
+        strategy,
     )
     
     # Normalize inputs (handles Query default objects if called directly in unit tests)
     clean_user_id = str(user_id) if isinstance(user_id, (str, int)) and not hasattr(user_id, "default") else None
     clean_product_id = product_id if isinstance(product_id, (str, int, UUID)) and not hasattr(product_id, "default") else None
+    clean_strategy = str(strategy) if isinstance(strategy, str) and not hasattr(strategy, "default") else None
 
     user_id = clean_user_id
     product_id = clean_product_id
+    strategy = clean_strategy
     
     if user_id is None and product_id is None:
         logger.info("Guest recommendation request received (no user_id or product_id) | using popularity baseline")
@@ -229,12 +233,16 @@ async def get_recommendations(
                             retailrocket_item_id
                         )
 
-                ext_resp = await inference_client.infer(
-                    user_id=str(user_id) if user_id is not None else None,
-                    item_id=retailrocket_item_id,
-                    k=settings.candidate_pool_size,
-                    model_version=getattr(settings, 'model_version', None)
-                )
+                infer_kwargs = {
+                    "user_id": str(user_id) if user_id is not None else None,
+                    "item_id": retailrocket_item_id,
+                    "k": settings.candidate_pool_size,
+                    "model_version": getattr(settings, 'model_version', None),
+                }
+                if strategy is not None:
+                    infer_kwargs["strategy"] = strategy
+
+                ext_resp = await inference_client.infer(**infer_kwargs)
 
                 if ext_resp and ext_resp.status == "success" and ext_resp.items:
                     ranked_items = [(item.item_id, item.score) for item in ext_resp.items]

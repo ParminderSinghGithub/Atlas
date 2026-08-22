@@ -21,6 +21,7 @@ class InferenceRequest(BaseModel):
     candidate_ids: Optional[List[int]] = Field(None, description="Optional candidate item IDs to re-rank")
     k: int = Field(100, ge=1, le=500, description="Number of candidates to generate/rank")
     model_version: Optional[str] = Field(None, description="Optional model artifact version tag")
+    strategy: Optional[str] = Field(None, description="Optional explicit strategy override ('svd', 'item_similarity', 'popularity', 'auto')")
 
     @validator('k')
     def validate_k(cls, v):
