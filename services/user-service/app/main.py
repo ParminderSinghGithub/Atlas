@@ -63,6 +63,14 @@ async def shutdown_event():
     print(f"Shutting down {settings.service_name}...")
 
 
+# Health check endpoints
+@app.get("/health")
+@app.get("/api/auth/health")
+def health():
+    """Health check for user service."""
+    return {"status": "healthy", "service": settings.service_name, "version": "2.0.0"}
+
+
 # Root endpoint for health check
 @app.get("/")
 def root():

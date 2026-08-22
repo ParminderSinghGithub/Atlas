@@ -282,11 +282,20 @@ async def proxy_auth(path: str, request: Request):
 
 # ==================== CATALOG SERVICE ROUTES ====================
 @app.api_route("/api/v1/catalog/{path:path}", methods=["GET", "OPTIONS"], tags=["Catalog"])
-async def proxy_catalog(path: str, request: Request):
-    """Proxy all /api/v1/catalog/* requests to catalog-service (read-only)."""
+@app.api_route("/api/v1/products{path:path}", methods=["GET", "OPTIONS"], tags=["Catalog"])
+@app.api_route("/api/v1/categories{path:path}", methods=["GET", "OPTIONS"], tags=["Catalog"])
+async def proxy_catalog(request: Request, path: str = ""):
+    """Proxy all catalog and taxonomy requests to catalog-service (read-only)."""
     async with httpx.AsyncClient() as client:
-        clean_path = path[8:] if path.startswith("catalog/") else path
-        url = f"{settings.CATALOG_SERVICE_URL}/api/v1/{clean_path}"
+        req_path = request.url.path
+        if req_path.startswith("/api/v1/catalog/"):
+            sub = req_path[len("/api/v1/catalog/"):]
+        elif req_path.startswith("/api/v1/"):
+            sub = req_path[len("/api/v1/"):]
+        else:
+            sub = path
+
+        url = f"{settings.CATALOG_SERVICE_URL.rstrip('/')}/api/v1/{sub}"
         headers = dict(request.headers)
         headers.pop("host", None)
         

@@ -27,21 +27,21 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes validity
 
 const STATUS_MESSAGES: Record<ReadinessState, string[]> = {
   INITIALIZING: [
-    'Connecting to Atlas platform services...',
+    'Getting Atlas ready...',
     'Checking infrastructure state...',
   ],
   WAKING_SERVICES: [
-    'Initializing cloud service containers...',
-    'Waking product catalog and recommendation engines...',
-    'Establishing secure database connections...',
+    'Waking product catalog and recommendation services...',
+    'Initializing backend containers...',
+    'Establishing database and cache connections...',
   ],
   CHECKING_READINESS: [
-    'Verifying microservice health and data stores...',
+    'Verifying microservice health...',
     'Pre-warming recommendation pipelines...',
     'Finalizing platform readiness...',
   ],
   READY: [
-    'Atlas platform is ready.',
+    'Atlas is ready.',
   ],
   DEGRADED: [
     'Catalog is ready. Recommendation engine is initializing in background.',
@@ -99,9 +99,9 @@ export const ReadinessProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     setReadinessState('WAKING_SERVICES');
-    setProgressPercent(30);
+    setProgressPercent(20);
 
-    const maxAttempts = 4;
+    const maxAttempts = 8;
     let attempt = 0;
 
     while (attempt < maxAttempts) {

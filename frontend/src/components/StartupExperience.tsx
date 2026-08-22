@@ -34,11 +34,11 @@ export const StartupExperience: React.FC = () => {
         </div>
 
         {/* Brand & Heading */}
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mb-2 bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
-          Atlas Commerce
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mb-2 text-white">
+          Atlas
         </h1>
         <p className="text-xs sm:text-sm text-slate-400 font-normal mb-8 tracking-wide">
-          Product Discovery & Recommendation Engine
+          Getting Atlas ready...
         </p>
 
         {/* Progress Bar Container */}

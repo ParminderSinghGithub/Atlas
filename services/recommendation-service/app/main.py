@@ -262,12 +262,23 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
+@app.get("/health", tags=["Health"])
+@app.get("/api/v1/health", tags=["Health"])
+async def health():
+    """Health and readiness check for Recommendation Service."""
+    return {
+        "status": "healthy",
+        "service": settings.service_name,
+        "version": "2.0.0",
+    }
+
+
 @app.get("/")
 async def root():
     """Root endpoint."""
     return {
         "service": settings.service_name,
-        "version": "1.0.0",
+        "version": "2.0.0",
         "status": "running",
         "docs": "/docs"
     }

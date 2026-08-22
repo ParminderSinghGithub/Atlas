@@ -8,7 +8,6 @@ export interface ProductCardProps {
   imageUrl?: string | null;
   categoryName?: string | null;
   rank?: number;
-  reason?: string | null;
   className?: string;
 }
 
@@ -19,7 +18,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   imageUrl,
   categoryName,
   rank,
-  reason,
   className = '',
 }) => {
   const formattedPrice = price
@@ -84,13 +82,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <h3 className="text-xs sm:text-sm font-semibold text-slate-800 line-clamp-2 leading-snug group-hover:text-blue-600 transition-colors">
             {name || id}
           </h3>
-
-          {/* Natural Human-Readable Reason (if justified, e.g. related to viewed category) */}
-          {reason && (
-            <p className="text-[11px] text-slate-500 line-clamp-1 mt-1 font-normal">
-              {reason}
-            </p>
-          )}
         </div>
 
         {/* Price & Action */}

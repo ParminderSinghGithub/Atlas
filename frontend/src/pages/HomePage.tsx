@@ -72,55 +72,25 @@ export const HomePage: React.FC = () => {
   };
 
   return (
-    <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-10 max-w-7xl">
-      {/* Hero Banner */}
-      <section className="mb-12 sm:mb-16">
-        <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-white rounded-3xl p-8 sm:p-12 shadow-2xl relative overflow-hidden border border-slate-800">
-          {/* Subtle glow effect */}
-          <div className="absolute -top-24 -right-24 w-96 h-96 bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
-          <div className="absolute -bottom-24 -left-24 w-80 h-80 bg-indigo-500/10 rounded-full blur-[90px] pointer-events-none" />
-
-          <div className="relative z-10 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-400/20 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-4">
-              <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-              Intelligent Product Discovery
-            </div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight mb-4 leading-tight">
-              Curated Recommendations.
-              <br />
-              <span className="bg-gradient-to-r from-blue-400 via-indigo-300 to-purple-400 bg-clip-text text-transparent">
-                Tailored for Every Session.
-              </span>
+    <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 max-w-7xl">
+      {/* Compact Hero Introduction */}
+      <section className="mb-8">
+        <div className="bg-slate-900 text-white rounded-2xl px-6 py-6 sm:px-8 sm:py-7 shadow-md border border-slate-800 relative overflow-hidden">
+          <div className="relative z-10 max-w-3xl">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white mb-2">
+              Personalized Recommendations & Product Discovery
             </h1>
-            <p className="text-sm sm:text-base text-slate-300 font-normal leading-relaxed mb-8">
-              Explore thousands of products ranked by relevance, session preferences, and catalog similarity.
+            <p className="text-xs sm:text-sm text-slate-300 font-normal leading-relaxed">
+              Explore catalog products ranked by session interaction, content similarity, and user preference.
             </p>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <Link
-                to="/products"
-                className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-all duration-200 shadow-lg shadow-blue-600/30 flex items-center gap-2 hover:translate-x-0.5"
-              >
-                Browse Catalog
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                </svg>
-              </Link>
-              <a
-                href="#recommendations"
-                className="px-6 py-3 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 text-sm font-medium transition-colors border border-slate-700/60 backdrop-blur-sm"
-              >
-                View Recommendations
-              </a>
-            </div>
           </div>
         </div>
       </section>
 
       {/* Category Discovery Pills */}
       {categories.length > 0 && (
-        <section className="mb-12">
-          <div className="flex items-center justify-between mb-4">
+        <section className="mb-10">
+          <div className="flex items-center justify-between mb-3">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Popular Categories
             </h2>
@@ -128,12 +98,12 @@ export const HomePage: React.FC = () => {
               All categories &rarr;
             </Link>
           </div>
-          <div className="flex flex-wrap gap-2.5">
+          <div className="flex flex-wrap gap-2">
             {categories.map((cat) => (
               <Link
                 key={cat.id}
                 to={`/products?category=${cat.id}`}
-                className="px-4 py-2 rounded-xl bg-white border border-slate-200/80 text-xs sm:text-sm font-semibold text-slate-700 hover:text-blue-600 hover:border-blue-300 hover:shadow-sm transition-all"
+                className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-medium text-slate-700 hover:text-blue-600 hover:border-blue-300 transition-all"
               >
                 {cat.name}
               </Link>
@@ -143,19 +113,19 @@ export const HomePage: React.FC = () => {
       )}
 
       {/* Recommendations Section */}
-      <section id="recommendations" className="mb-16">
-        <div className="flex items-end justify-between mb-6">
+      <section id="recommendations" className="mb-14">
+        <div className="flex items-end justify-between mb-5">
           <div>
-            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
               Recommended For You
             </h2>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Curated items aligned with your current session and browsing context.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Products ranked by browsing context and relevance.
             </p>
           </div>
           {recommendations.length > 0 && (
-            <span className="hidden sm:inline-block text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full border border-slate-200/60">
-              {recommendations.length} items curated
+            <span className="hidden sm:inline-block text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">
+              {recommendations.length} recommended items
             </span>
           )}
         </div>

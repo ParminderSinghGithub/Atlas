@@ -58,18 +58,17 @@ async def fetch_product_metadata_safe(
     product_id: UUID,
 ) -> tuple[UUID, Dict[str, Any], float]:
     """Fetch a single product metadata record with bounded concurrency and graceful fallback."""
-    request_url = f"{base_url}/api/v1/catalog/products/{product_id}"
+    clean_base = base_url.rstrip("/")
+    primary_url = f"{clean_base}/api/v1/products/{product_id}"
+    fallback_url = f"{clean_base}/api/v1/catalog/products/{product_id}"
     request_start = time.time()
 
     async with semaphore:
         try:
-            logger.info(
-                "Fetching metadata from: %s | base_url=%s | product_id=%s",
-                request_url,
-                base_url,
-                product_id,
-            )
-            response = await client.get(request_url)
+            response = await client.get(primary_url)
+            if response.status_code == 404:
+                response = await client.get(fallback_url)
+
             request_latency_ms = (time.time() - request_start) * 1000
 
             if response.status_code == 200:
@@ -89,16 +88,16 @@ async def fetch_product_metadata_safe(
                 }, request_latency_ms
 
             logger.warning(
-                "Failed to fetch product metadata | product_id=%s | http_status=%s | request_url=%s",
+                "Failed to fetch product metadata | product_id=%s | http_status=%s | primary_url=%s",
                 product_id,
                 response.status_code,
-                request_url,
+                primary_url,
             )
         except Exception:
             logger.exception(
-                "Error fetching product metadata | product_id=%s | request_url=%s",
+                "Error fetching product metadata | product_id=%s | url=%s",
                 product_id,
-                request_url,
+                primary_url,
             )
 
     request_latency_ms = (time.time() - request_start) * 1000
@@ -109,6 +108,17 @@ async def fetch_product_metadata_safe(
         'is_deleted': False,
         'category_id': hash(product_id) % 10
     }, request_latency_ms
+
+
+@router.get("/health", tags=["Health"])
+@router.get("/api/v1/health", tags=["Health"])
+async def router_health():
+    """Health check for Recommendation routes."""
+    return {
+        "status": "healthy",
+        "service": "recommendation-service",
+        "version": "2.0.0",
+    }
 
 
 async def fetch_product_metadata(product_ids: List[UUID]) -> Dict[UUID, Dict[str, Any]]:
