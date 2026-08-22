@@ -1,16 +1,15 @@
-# Atlas - ML-Powered E-Commerce Platform
+# Atlas — ML-Powered E-Commerce & Personalization Platform
 
-**Production-grade recommendation platform with active Render/Vercel deployment and preserved Azure AKS history**
+**Production-grade recommendation platform with active cloud deployment (Vercel + Render + OCI + Neon + Upstash) and preserved Azure AKS engineering history**
 
-🌐 **Live Frontend (Active Production):** https://atlas-six-roan.vercel.app/
+🌐 **Live Frontend (Active Production):** https://atlas-six-roan.vercel.app/  
+🌐 **Historical Deployment (Retained Documentation/Evidence):** https://4-224-153-183.sslip.io/ (Azure AKS + NGINX Ingress)
 
-🌐 **Previous Deployment (Retained for Documentation/History):** https://4-224-153-183.sslip.io/ (Azure AKS + NGINX Ingress)
+*Azure AKS documentation remains in this repository as architecture and deployment evidence. The active live deployment runs on Vercel, Render, OCI ML Inference, Neon PostgreSQL, and Upstash Redis.*
 
-Azure AKS documentation remains in this repository as architecture/deployment evidence. The active live deployment moved to Render/Vercel/Neon due to resource constraints, infrastructure migration, and deployment optimization for free-tier operations.
-
-[![Tech Stack](https://img.shields.io/badge/Active_Stack-React%20%7C%20FastAPI%20%7C%20Render-blue)]()
-[![ML Models](https://img.shields.io/badge/ML-SVD%20%7C%20LightGBM%20%7C%20Session--Aware-green)]()
-[![Deployment](https://img.shields.io/badge/Deployment-Render%20%2B%20Vercel-blue)]()
+[![Tech Stack](https://img.shields.io/badge/Active_Stack-React%2018%20%7C%20FastAPI%20%7C%20Render%20%7C%20OCI-blue)]()
+[![ML Models](https://img.shields.io/badge/ML-LightGBM%20%7C%20Item--Item%20Similarity%20%7C%20SVD%20(Offline)-green)]()
+[![Deployment](https://img.shields.io/badge/Deployment-Render%20%2B%20Vercel%20%2B%20OCI-blue)]()
 [![History](https://img.shields.io/badge/History-Azure%20AKS-orange)]()
 
 ![Atlas Demo](demo.gif)
@@ -19,104 +18,99 @@ Azure AKS documentation remains in this repository as architecture/deployment ev
 
 ## What is Atlas?
 
-Atlas is a **cloud-native e-commerce platform** with an integrated machine learning recommendation engine. It demonstrates end-to-end system design from model training to production deployment, featuring:
+Atlas is a **cloud-native e-commerce and recommendation platform** with an integrated machine learning engine. It demonstrates end-to-end system design from offline model training and artifact promotion to multi-service cloud production, featuring:
 
-- **React Frontend** with real-time product browsing and personalized recommendations
-- **Microservices Backend** (FastAPI) with JWT authentication and catalog management
-- **ML Recommendation System** using collaborative filtering (SVD), gradient boosting (LightGBM), and session-aware reranking
-- **Active Production Deployment** on Vercel + Render with Neon PostgreSQL and Upstash Redis
-- **Historical Deployment Evidence** on Azure Kubernetes Service with NGINX Ingress and HTTPS (retained in docs)
-- **Real Product Catalog** with 2,000 Amazon products across 4 categories
+- **React 18 + Vite Frontend**: High-performance single-page application with real-time product discovery, category filtering, cart management, and guest auth guards.
+- **API Gateway**: Coordinated multi-service readiness probing, route proxying, and caching.
+- **Catalog Microservice**: Product catalog, category hierarchies, and real-time interaction event ingestion into Neon PostgreSQL.
+- **Recommendation Microservice**: Real-time multi-strategy candidate generation, session intent re-ranking via Upstash Redis, and 90-day long-term user personalization.
+- **ML Inference Microservice (OCI Host)**: Remote high-throughput model serving hosting Item-Item Co-visitation similarity and LightGBM ranking over 16 behavioral features.
+- **User & Authentication Microservice**: JWT authentication, bcrypt password hashing, and single-use 6-digit numeric OTP password recovery via Resend API / SMTP.
+- **Real Product Catalog**: 2,000 curated Amazon products across 4 categories (Electronics, Cell Phones, Sports, Software).
 
-The system bridges **offline training** (RetailRocket behavioral dataset) with **online serving** (Amazon product catalog) through a latent mapping layer, enabling realistic recommendations without exposing training data.
-
----
-
-## Current Live Deployment (Active)
-
-- **Frontend (Vercel)**: https://atlas-six-roan.vercel.app/
-- **API Gateway (Render)**: Public Render web service (dashboard-managed URL)
-- **Catalog Service (Render)**: Public Render web service (dashboard-managed URL)
-- **Recommendation Service (Render)**: Public Render web service (dashboard-managed URL)
-- **User Service (Render)**: Public Render web service (dashboard-managed URL)
-- **Primary Production Database**: Neon PostgreSQL
-
-### Recommendation Serving Mode in Production
-
-The active cloud deployment runs a **deployment-optimized inference mode**:
-
-- Popularity-based recommendation serving is always available.
-- Latent item mappings are loaded dynamically from PostgreSQL.
-- Catalog metadata hydration is performed at request time.
-- Feature-table loading is disabled in constrained production mode.
-- Similarity model loading is disabled in lightweight deployment mode.
-- SVD is optional and fallback-safe.
-- LightGBM ranking is disabled in constrained deployment mode.
-
-This mode is intentional for reliability on constrained infrastructure. It is not a broken state.
+The platform bridges **offline training** (2.7M RetailRocket behavioral events) with **online serving** (Amazon product catalog) through a latent mapping layer, enabling personalized recommendations.
 
 ---
 
-## System Capabilities
+## Live Deployed Service Links & Swagger APIs
 
-### Core Features
-- [✓] **User Authentication** - JWT-based auth with secure session management
-- [✓] **Product Catalog** - 2,000 curated Amazon products with images, prices, descriptions
-- [✓] **Category Browsing** - Electronics, Cell Phones, Sports, Software
-- [✓] **ML Recommendations** - Three-strategy system (personalized, similarity, popularity)
-- [✓] **Session Tracking** - Redis-based session awareness for intent-driven reranking
+The production services are live and directly accessible for interactive testing and Swagger/OpenAPI exploration:
 
-### ML Personalization (Current State)
+| Service | Public URL | Swagger / OpenAPI UI | OpenAPI JSON |
+| :--- | :--- | :--- | :--- |
+| **Frontend Application** | https://atlas-six-roan.vercel.app/ | — | — |
+| **API Gateway** | https://api-gateway-mmoc.onrender.com | [/docs](https://api-gateway-mmoc.onrender.com/docs) | [/openapi.json](https://api-gateway-mmoc.onrender.com/openapi.json) |
+| **Catalog Service** | https://catalog-service-uo46.onrender.com | [/docs](https://catalog-service-uo46.onrender.com/docs) | [/openapi.json](https://catalog-service-uo46.onrender.com/openapi.json) |
+| **Recommendation Service** | https://recommendation-service-8ag0.onrender.com | [/docs](https://recommendation-service-8ag0.onrender.com/docs) | [/openapi.json](https://recommendation-service-8ag0.onrender.com/openapi.json) |
+| **User & Auth Service** | https://user-service-rzbt.onrender.com | [/docs](https://user-service-rzbt.onrender.com/docs) | [/openapi.json](https://user-service-rzbt.onrender.com/openapi.json) |
+| **ML Inference Engine (OCI)** | http://150.230.143.133:8001 | [/docs](http://150.230.143.133:8001/docs) | [/openapi.json](http://150.230.143.133:8001/openapi.json) |
 
-**What IS Personalized:**
-- [✓] **Item-to-Item Similarity** - Product detail pages show similar items based on features
-- [✓] **Session-Aware Reranking** - Recommendations adapt to current browsing session behavior
-- [✓] **Popularity Baseline** - Cold start users see globally popular items
-
-**What is NOT (Yet) Personalized:**
-- [!] **User-Level Collaborative Filtering** - SVD model is trained but **limited by cold-start problem**:
-  - **Root Cause:** Training data (RetailRocket user IDs) ≠ Production data (Atlas UUIDs)
-  - **Current Behavior:** New users get popularity fallback (no history to learn from)
-  - **Infrastructure:** Model loading, inference pipeline, and feature engineering are **production-ready**
-  - **To Enable:** Requires either (a) accumulating production interaction data for retraining, or (b) implementing online embedding updates
-
-This is an **intentional architectural decision** to prioritize deployment readiness over feature completeness. The system is structured to incorporate full personalization once sufficient production data is collected.
+*Note on Free-Tier Operation: Render services sleep after inactivity and cold start in ~25–30s. The frontend readiness coordinator (`/api/v1/ready`) automatically handles this wake-up transition.*
 
 ---
 
-## Key ML Statistics
+## Recommendation & Personalization Architecture
 
-### Dataset
-- **Training Events**: 2.7M user interactions (RetailRocket)
-- **Unique Users**: 1.4M (training dataset)
-- **Unique Items**: 235K products (training dataset)
-- **Production Catalog**: 2,000 curated Amazon products
-- **Time Range**: 137 days of behavioral data (May-Sep 2015)
-- **Event Distribution**: Views (96.7%), Add-to-Cart (2.5%), Purchase (0.8%)
+### Multi-Strategy Pipeline
 
-### Model Performance
-- **LightGBM Ranker**: 16 features, ~2.8MB model size
-- **SVD Matrix Factorization**: 10 latent factors, 1.4M user embeddings
-- **Item Similarity**: 132K items, 317K similarity pairs
-- **Training Split**: 80% train (1.7M events), 20% validation (429K events)
-- **Validation Metrics**: Two-Stage Pipeline NDCG@10: 0.9932 (offline), Time-based split to prevent leakage  
-  *Note: Offline metric on test data; production expected lower*
+```
+User Request (GET /api/v1/recommendations?user_id=...&k=8)
+    ↓
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 1. CANDIDATE GENERATION (Recall Layer)                                  │
+│   • Item Similarity (TF-IDF Co-visitation via OCI :8001)               │
+│   • Category Similarity (Product detail fallback)                       │
+│   • Global Popularity Baseline (Cold start fallback)                    │
+│   • SVD Collaborative Filtering (Preserved in offline training/Swagger) │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │ (100 candidates)
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 2. TWO-STAGE LIGHTGBM RE-RANKING (OCI Host :8001)                      │
+│   • 16 behavioral features (user recency, item conversion, popularity)  │
+│   • LambdaRank NDCG optimization                                        │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │ (Ranked candidates)
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 3. REAL-TIME SESSION INTENT RE-RANKING (Upstash Redis)                 │
+│   • Category views & product views in active session                   │
+│   • Dynamic bounded score boost: +0.35 to +0.60 * score span           │
+│   • Score-space invariant (preserves rank bounds without runaway scale)│
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 4. LONG-TERM USER PERSONALIZATION (Neon PostgreSQL)                    │
+│   • 90-day historical interaction profile (view/cart/buy weights)       │
+│   • Bounded category affinity boost: +0.10 * score span                 │
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │
+                                     ▼
+Final Hydrated Recommendations returned to UI (Top K: 8 items)
+```
 
-### Inference Performance
-- **Local Full Pipeline (Reference)**: <200ms target when all artifacts/features are enabled
-- **Cloud Deployment-Optimized Mode**: latency depends on cold starts + cross-service metadata hydration
-- **Candidate Generation**: popularity + mapping path prioritized in constrained production mode
-- **Ranking**: LightGBM disabled in constrained production mode
-- **Model Memory Footprint**: full model stack remains available for local/full deployment paths
-
-### Architecture Metrics
-- **Microservices**: 5 backend services + 1 frontend
-- **Active Production Deployment**: Vercel frontend + Render backend services
-- **Historical Deployment**: Azure AKS manifests and architecture retained for documentation/history
-- **Database**: Neon PostgreSQL (production), local PostgreSQL for local workflows
-- **Redis**: Upstash Redis (production), local Redis for local workflows
+### SVD Collaborative Filtering: Offline vs. Online Serving
+- **Dataset**: Matrix factorization trained on 2.7M RetailRocket interactions across 1.4M users and 235K items (10 latent components).
+- **Online Production Serving Status**: Intentionally **disabled** in the default frontend recommendation path because RetailRocket user integer IDs differ from live Atlas user UUIDs, preventing artificial cold-start failure.
+- **Offline & Swagger Testing Availability**: Fully preserved in `training/` pipeline, offline evaluations, and directly testable on the OCI ML Swagger endpoint using RetailRocket item/user IDs (e.g. Item ID `359491` or `1000`).
 
 ---
+
+## System Capabilities Truth Table
+
+| Capability | Status | Implementation Location | Active in Prod | Architectural Notes |
+| :--- | :---: | :--- | :---: | :--- |
+| **Item-Item Similarity** | Trained & Active | OCI Host (`:8001`) + FastAPI | **YES** | Content & co-visitation similarity for similar products |
+| **Popularity Baseline** | Active | PostgreSQL / Redis | **YES** | Global baseline ensuring robust category coverage |
+| **LightGBM Re-Ranker** | Trained & Active | OCI Host (`:8001`) | **YES** | 16-feature ranking model trained with LambdaRank |
+| **Session Intent Re-Ranking** | Active | Upstash Redis | **YES** | Bounded intent boost (+0.35 to +0.60 $\times$ span) |
+| **Long-Term Personalization** | Active | Neon PostgreSQL Events | **YES** | 90-day category preference profile (+0.10 $\times$ span) |
+| **SVD Matrix Factorization** | Offline / Testing | `training/` & OCI Swagger | **OFFLINE** | Preserved for offline retraining & Swagger testing |
+| **PostgreSQL Event Ingestion** | Active | Catalog Service / Neon | **YES** | Real-time logging of views, clicks, and cart events |
+| **Coordinated Startup Gate** | Active | API Gateway (`/api/v1/ready`) | **YES** | Probes dependencies and gates UI during cold boot |
+| **Guest Cart Redirect Guard** | Active | React Frontend Auth Router | **YES** | Redirects guests to `/login` with return path |
+| **Single-Use OTP Password Reset** | Active | User Service / PostgreSQL | **YES** | 6-digit numeric OTP with 15m expiration & Resend/SMTP |
 
 ## Architecture Overview
 
