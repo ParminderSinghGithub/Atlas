@@ -525,7 +525,7 @@ const api = axios.create({
 
 **Key Responsibilities**:
 - **Single Public Entry Point**: Single CORS origin and SSL termination
-- **Readiness Orchestration**: Deep multi-service health verification (`/api/v1/ready`) checking Catalog, User, Recommendation, and ML Inference Engine (OCI). Operates in tandem with the frontend pre-wakeup trigger (frontend triggers sleeping Render services from the browser, then Gateway authoritative readiness coordinator verifies health).
+- **Readiness Orchestration**: Deep multi-service health verification (`/api/v1/ready`) checking Catalog, User, Recommendation, and ML Inference Engine (OCI). Operates in tandem with the frontend pre-wakeup trigger (the frontend bypasses the API Gateway specifically when waking the Catalog, Recommendation, and User services because Render blocks/rejects the wakeup call when one Render service attempts to wake another sleeping Render service; the frontend directly triggers those three Render services first, after which the API Gateway readiness logic performs the authoritative readiness checks).
 - **Service Isolation**: Downstream microservices operate without public ingress exposure
 
 ---

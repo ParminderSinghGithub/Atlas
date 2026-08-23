@@ -200,13 +200,10 @@ export const ProductDetailPage: React.FC = () => {
                 {product.name}
               </h1>
 
-              {/* Price & Availability Tag */}
+              {/* Price */}
               <div className="flex items-baseline gap-4 mb-6 pb-6 border-b border-slate-100">
                 <span className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
                   {formattedPrice}
-                </span>
-                <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/60">
-                  Available in Catalog
                 </span>
               </div>
 
