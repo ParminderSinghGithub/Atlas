@@ -7,10 +7,11 @@
 
 *Azure AKS documentation remains in this repository as architecture and deployment evidence. The active live deployment runs on Vercel, Render, OCI ML Inference, Neon PostgreSQL, and Upstash Redis.*
 
-[![Tech Stack](https://img.shields.io/badge/Active_Stack-React%2018%20%7C%20FastAPI%20%7C%20Render%20%7C%20OCI-blue)]()
-[![ML Models](https://img.shields.io/badge/ML-LightGBM%20%7C%20Item--Item%20Similarity%20%7C%20SVD%20(Offline)-green)]()
+[![Tech Stack](https://img.shields.io/badge/Active_Stack-React%2019%20%7C%20FastAPI%20%7C%20Render%20%7C%20OCI-blue)]()
+[![ML Models](https://img.shields.io/badge/ML-LightGBM%20%7C%20Item--Item%20Similarity%20%7C%20SVD%20%28Offline%29-green)]()
 [![Deployment](https://img.shields.io/badge/Deployment-Render%20%2B%20Vercel%20%2B%20OCI-blue)]()
 [![History](https://img.shields.io/badge/History-Azure%20AKS-orange)]()
+[![Tests](https://img.shields.io/badge/Tests-8%20Suites%20Passed%20%28GO%29-success)]()
 
 ![Atlas Demo](demo.gif)
 
@@ -20,7 +21,7 @@
 
 Atlas is a **cloud-native e-commerce and recommendation platform** with an integrated machine learning engine. It demonstrates end-to-end system design from offline model training and artifact promotion to multi-service cloud production, featuring:
 
-- **React 18 + Vite Frontend**: High-performance single-page application with real-time product discovery, category filtering, cart management, and guest auth guards.
+- **React 19 + Vite Frontend**: High-performance single-page application with real-time product discovery, category filtering, cart management, and guest auth guards.
 - **API Gateway**: Coordinated multi-service readiness probing, route proxying, and caching.
 - **Catalog Microservice**: Product catalog, category hierarchies, and real-time interaction event ingestion into Neon PostgreSQL.
 - **Recommendation Microservice**: Real-time multi-strategy candidate generation, session intent re-ranking via Upstash Redis, and 90-day long-term user personalization.
@@ -137,9 +138,18 @@ Final Hydrated Recommendations returned to UI (Top K: 8 items)
           ▼                  ▼                  ▼
 ┌──────────────────┐┌──────────────────┐┌──────────────────┐
 │   User Service   ││ Catalog Service  ││ Recommendation   │
-│  (Auth + Users)  ││ (Products + Cat) ││   Service (ML)   │
+│  (Auth + Users)  ││ (Products + Cat) ││ Service (Render) │
 │(FastAPI / Render)││(FastAPI / Render)││(FastAPI / Render)│
 └────────┬─────────┘└────────┬─────────┘└────────┬─────────┘
+         │                   │                   │
+         │                   │                   │ (REST /infer)
+         │                   │                   ▼
+         │                   │          ┌──────────────────┐
+         │                   │          │ OCI ML Inference │
+         │                   │          │ Host (:8001)     │
+         │                   │          │ • LightGBM 16-Feat
+         │                   │          │ • Item-Item Sim  │
+         │                   │          └──────────────────┘
          │                   │                   │
          └─────────────┬─────┴───────────────────┘
                        │
@@ -325,6 +335,17 @@ docker exec infra-db-1 bash -c "apt-get update && apt-get install -y python3 pyt
 - **Recommendation Service**: http://localhost:5005
 - **PostgreSQL**: localhost:5432
 - **Redis**: localhost:6379
+
+---
+
+## Running Automated Tests & Quality Verification
+
+Atlas includes 8 comprehensive test suites spanning ML boundary contracts, session re-ranking mathematics, gateway cold-start simulation, and auth security.
+
+```bash
+# Execute master test runner and generate FINAL_VALIDATION_REPORT.json
+python tests/run_all_tests.py
+```
 
 ---
 
