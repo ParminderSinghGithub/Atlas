@@ -30,10 +30,10 @@ ENV PATH=/root/.local/bin:$PATH
 # Copy application source
 COPY services/ml-inference-service/ml_app/ /app/ml_app/
 
-# Copy production ML artifacts from notebooks
-COPY notebooks/artifacts/ /artifacts/
+# Ensure directory for runtime model artifacts
+RUN mkdir -p /artifacts
 
-# Environment defaults (Hugging Face Spaces default port 7860 or internal 8001)
+# Environment defaults
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=8001 \
@@ -42,7 +42,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 EXPOSE 8001 7860
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request, os; p = os.getenv('PORT', '8001'); urllib.request.urlopen(f'http://localhost:{p}/health')" || exit 1
 
 CMD ["sh", "-c", "uvicorn ml_app.main:app --host 0.0.0.0 --port ${PORT:-8001}"]

@@ -21,12 +21,12 @@ Atlas implements a **multi-stage recommendation and personalization pipeline** c
 
 ```
 Stage 1: Candidate Generation (Recall Layer)
-    ├─ Item-Item Similarity (TF-IDF Co-visitation via OCI :8001)
+    ├─ Item-Item Similarity (TF-IDF Co-visitation via Railway / OCI history)
     ├─ Category Similarity (Product detail page fallback)
     ├─ Popularity Baseline (Cold start / unknown user baseline)
     └─ SVD Collaborative Filtering (Preserved in offline training & Swagger testing)
 
-Stage 2: LightGBM Ranking (Precision Layer on OCI :8001)
+Stage 2: LightGBM Ranking (Precision Layer on Railway / OCI History)
     └─ Re-ranks candidates using 16 engineered behavioral features (LambdaRank NDCG)
 
 Stage 3: Real-Time Session Intent Re-Ranking (Upstash Redis)
@@ -36,16 +36,16 @@ Stage 4: Long-Term User Personalization (Neon PostgreSQL)
     └─ Category affinity boost (+0.10 * score span) calculated from 90-day event history
 ```
 
-### Production Inference Architecture (Render + OCI Host)
+### Production Inference Architecture (Render + Railway ML Host, OCI Provenance)
 
 Atlas decouples domain orchestration from compute-intensive ML inference:
 - **Recommendation Service (Render)**: Validates requests, fetches active session state from Upstash Redis, computes long-term preference vectors from Neon PostgreSQL, orchestrates external ML calls, maps latent IDs to Amazon product UUIDs, and hydates catalog metadata.
-- **ML Inference Service (OCI Host `150.230.143.133:8001`)**: High-performance model host serving Item-Item Co-visitation Similarity and LightGBM Ranking over pre-computed User and Item Parquet feature stores.
+- **ML Inference Service (Railway `https://atlas-ml-inference-production.up.railway.app`, OCI History `150.230.143.133:8001`)**: High-performance containerized model host serving Item-Item Co-visitation Similarity and LightGBM Ranking over pre-computed User and Item Parquet feature stores (retrieved dynamically on container boot from the Hugging Face model repository: [ParminderzHuggingFace/atlas-railway-models](https://huggingface.co/ParminderzHuggingFace/atlas-railway-models)).
 - **Fail-Safe Fallbacks**: If external ML inference times out (>2.0s) or encounters cold-start items, the pipeline automatically falls back to local category similarity or popularity baseline.
 
 ### SVD Collaborative Filtering Status (Offline vs. Serving)
 - **Offline Training**: SVD matrix factorization (10 latent factors) trained on 2.7M RetailRocket events is fully operational in the offline training pipeline (`training/train_candidates.py`).
-- **Interactive Swagger Exploration**: Direct ML testing with RetailRocket integer IDs (e.g. `359491`) is supported via the OCI ML Swagger UI.
+- **Interactive Swagger Exploration**: Direct ML testing with RetailRocket integer IDs (e.g. `359491`) is supported via the Railway ML Swagger UI (and historical OCI Swagger).
 - **Production Serving Guard**: SVD serving is intentionally bypassed in the normal frontend recommendation path because live Atlas user UUIDs do not exist in the historical RetailRocket integer user ID space, preventing cold-start prediction degradation.
 
 ### Key Architectural Decision
@@ -435,6 +435,18 @@ def retrain_models():
 ## Inference Architecture
 
 *Note: Active cloud production operates in deployment-optimized inference mode (popularity + latent mapping + session reranking); full LightGBM pipeline remains available in local/K8s environments.*
+
+### Model Artifact Distribution (Hugging Face)
+
+All trained models and pre-computed Parquet feature tables are hosted and versioned in the Hugging Face model repository:
+- **Repository URL**: [https://huggingface.co/ParminderzHuggingFace/atlas-railway-models](https://huggingface.co/ParminderzHuggingFace/atlas-railway-models)
+- **Included Artifacts**:
+  - `item_similarity.pkl` (24.8 MB) — Item-Item Co-visitation similarity matrix
+  - `lightgbm_ranker.txt` (52 KB) — 16-feature LightGBM LambdaRank booster
+  - `popularity_baseline.pkl` (3.4 KB) — Global popularity fallback
+  - `user_features.parquet` (16.3 MB) & `item_features.parquet` (11.8 MB) — Behavioral feature tables
+  - `svd_model.pkl` (173 MB) — Offline SVD matrix factorization for Swagger and testing
+  - `artifact_manifest.json` — SHA-256 integrity verification manifest
 
 ### Service Startup (Model Loading)
 

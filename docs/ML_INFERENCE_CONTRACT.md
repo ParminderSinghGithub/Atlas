@@ -6,7 +6,7 @@ Atlas is deployed as a distributed microservices architecture, where the `recomm
 1. **Recall Layer**: Item-Item Co-visitation Similarity (132K items, 317K pairs) and SVD Collaborative Filtering (offline matrix factorization).
 2. **Feature Store / Precision Layer**: User & Item parquet feature stores (1.4M users, 235K items, 16 features) and LightGBM LambdaRank Precision Ranker.
 
-To ensure high performance and eliminate memory bottlenecks, Atlas establishes a dedicated **External ML Inference Engine** deployed on an **Oracle Cloud Infrastructure (OCI)** host (`http://150.230.143.133:8001`).
+To ensure high performance and eliminate memory bottlenecks, Atlas establishes a dedicated **External ML Inference Engine** deployed on **Railway** (`https://atlas-ml-inference-production.up.railway.app`), with historical deployment roots on an **Oracle Cloud Infrastructure (OCI)** host (`http://150.230.143.133:8001`).
 
 ---
 
@@ -30,12 +30,13 @@ The platform cleanly separates domain/business orchestration from compute-heavy 
                            │ POST /api/v1/infer (REST)
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│        OCI ML Inference Host (150.230.143.133:8001)    │
+│    Railway ML Inference Engine (OCI Host History)      │
 │  - Item-Item Sparse Similarity Matrix Lookups          │
 │  - Feature Extraction (User & Item Parquet Tables)     │
 │  - LightGBM LambdaRank Precision Scoring (16 Features) │
 │  - SVD Matrix Factorization (Swagger Exploration)      │
 │  - SHA-256 Artifact Integrity Verification             │
+│  - Dynamic Artifact Sync via Private Hugging Face Repo │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -45,12 +46,14 @@ The platform cleanly separates domain/business orchestration from compute-heavy 
 
 ### 3.1 Live Service Endpoints
 
-- **Inference Host**: `http://150.230.143.133:8001`
+- **Active Inference Host (Railway)**: `https://atlas-ml-inference-production.up.railway.app`
+- **Historical Inference Host (OCI)**: `http://150.230.143.133:8001`
+- **Model Artifact Repository (Hugging Face)**: [https://huggingface.co/ParminderzHuggingFace/atlas-railway-models](https://huggingface.co/ParminderzHuggingFace/atlas-railway-models)
 - **Inference Path**: `POST /api/v1/infer` (or `POST /infer`)
 - **Health Check**: `GET /health`
 - **Readiness Probe**: `GET /ready`
 - **Artifact Metadata**: `GET /metadata`
-- **Swagger UI**: `http://150.230.143.133:8001/docs`
+- **Swagger UI**: `https://atlas-ml-inference-production.up.railway.app/docs` (OCI history: `http://150.230.143.133:8001/docs`)
 
 ### 3.2 Request Schema (`InferenceRequest`)
 

@@ -192,7 +192,9 @@ class ArtifactVerifier:
         # Check each artifact in manifest
         for filename, spec in artifacts_spec.items():
             expected_sha = spec.get("sha256")
-            is_required = spec.get("required", True)
+            is_production = spec.get("production", spec.get("required", True))
+            is_testing = spec.get("testing", True)
+            is_required = spec.get("required", is_production)
 
             # Resolve file path
             if spec.get("type") == "features":
@@ -210,20 +212,22 @@ class ArtifactVerifier:
                 "actual_sha256": actual_sha,
                 "matched": is_match,
                 "required": is_required,
+                "production": is_production,
+                "testing": is_testing,
             }
             result.artifacts_checked[filename] = artifact_status
 
             if not is_match:
-                if is_required:
+                if is_production or is_required:
                     all_artifacts_valid = False
                     err_msg = (
-                        f"Artifact integrity failure on {filename}: "
+                        f"Production artifact integrity failure on {filename}: "
                         f"expected={expected_sha[:12]}..., actual={actual_sha[:12]}..."
                     )
                     logger.error(err_msg)
                     result.errors.append(err_msg)
                 else:
-                    logger.warning("Optional artifact %s mismatch or missing", filename)
+                    logger.info("Testing-only artifact %s absent or unverified (non-blocking for online readiness)", filename)
 
         # Validate Ranker Feature Compatibility
         if ranker_features is not None:

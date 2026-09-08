@@ -1,0 +1,50 @@
+# Docker build ignore file
+.git
+.github
+.cache
+.pytest_cache
+
+# Large data & media files
+data/
+demo.gif
+*.mp4
+*.zip
+*.tar.gz
+
+# Deployment artifact staging directories
+.oci-deploy/
+.railway-deploy/
+
+# Documentation & evidence
+docs/
+docs_private/
+ARCHITECTURE.md
+DEPLOYMENT.md
+ML_SYSTEM.md
+FINAL_VALIDATION_REPORT.json
+
+# Frontend & other services not needed for ML inference build
+frontend/
+services/api-gateway/
+services/catalog-service/
+services/recommendation-service/
+services/user-service/
+services/shared/
+
+# Infrastructure & historical manifests
+k8s/
+infra/
+monitoring/
+training/
+tools/
+tests/
+notebooks/
+
+# Python cache & virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/

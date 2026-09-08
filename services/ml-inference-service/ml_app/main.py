@@ -29,6 +29,7 @@ from ml_app.models.similarity import get_similarity_model
 from ml_app.models.lightgbm_ranker import get_ranker
 from ml_app.features.loader import get_feature_loader
 from ml_app.core.manifest import ArtifactVerifier, ArtifactVerificationResult
+from ml_app.core.download import ensure_artifacts_available
 
 # Initialize logging
 setup_logging()
@@ -44,27 +45,31 @@ async def lifespan(app: FastAPI):
     logger.info("STARTING ATLAS EXTERNAL ML INFERENCE SERVICE")
     logger.info("=" * 70)
 
-    # 1. SVD Model Serving (Disabled in production path)
-    if settings.enable_svd_serving:
-        logger.info("[1/4] Loading SVD Model...")
-        svd = get_svd_model()
+    # 0. Ensure artifacts are available (download from Hugging Face if configured & missing)
+    logger.info("[0/5] Checking local ML artifacts / Hugging Face repository sync...")
+    ensure_artifacts_available()
+
+    # 1. SVD Model Serving (Available for testing & Swagger exploration)
+    svd = get_svd_model()
+    if settings.enable_svd_serving or svd.model_path.exists():
+        logger.info("[1/5] Loading SVD Model for testing & Swagger exploration...")
         svd_loaded = svd.load()
     else:
-        logger.info("[1/4] SVD Model serving disabled in production path (skipping artifact load)")
+        logger.info("[1/5] SVD Model serving disabled or artifact absent (skipping artifact load)")
         svd_loaded = False
 
     # 2. Load Item-Item Similarity Model
-    logger.info("[2/4] Loading Item Similarity Matrix...")
+    logger.info("[2/5] Loading Item Similarity Matrix...")
     similarity = get_similarity_model()
     sim_loaded = similarity.load()
 
     # 3. Load Feature Tables
-    logger.info("[3/4] Loading Feature Tables from Parquet...")
+    logger.info("[3/5] Loading Feature Tables from Parquet...")
     features = get_feature_loader()
     feats_loaded = features.load_all()
 
     # 4. Load LightGBM Ranker
-    logger.info("[4/4] Loading LightGBM Ranker...")
+    logger.info("[4/5] Loading LightGBM Ranker...")
     ranker = get_ranker()
     ranker_loaded = ranker.load()
 
@@ -243,8 +248,9 @@ async def infer(request: InferenceRequest):
         except (ValueError, AttributeError):
             is_uuid_format = False
 
-        # Frontend guest/UUID traffic safely bypasses SVD unless explicitly overridden
-        if not settings.enable_svd_serving or ((is_guest or is_uuid_format) and not is_explicit_svd):
+        # Allow SVD when explicitly requested for testing/Swagger, or when enabled for non-guest sessions
+        can_run_svd = is_explicit_svd or (settings.enable_svd_serving and not (is_guest or is_uuid_format))
+        if not can_run_svd:
             elapsed_ms = (time.time() - start_time) * 1000
             strategy_name = "svd_disabled" if not settings.enable_svd_serving else "svd_cold_start"
             return InferenceResponse(

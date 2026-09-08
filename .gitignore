@@ -136,3 +136,5 @@ venv-tests/
 tools/amazon-integration/venv/
 
 .oci-deploy
+.railway-deploy
+.railway-deploy/**

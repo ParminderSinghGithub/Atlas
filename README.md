@@ -1,16 +1,17 @@
 # Atlas — ML-Powered E-Commerce & Personalization Platform
 
-**Production-grade recommendation platform with active cloud deployment (Vercel + Render + OCI + Neon + Upstash) and preserved Azure AKS engineering history**
+**Production-grade recommendation platform with active cloud deployment (Vercel + Render + Railway + Neon + Upstash) and preserved OCI and Azure AKS engineering history**
 
 🌐 **Live Frontend (Active Production):** https://atlas-six-roan.vercel.app/  
 🌐 **Historical Deployment (Retained Documentation/Evidence):** https://4-224-153-183.sslip.io/ (Azure AKS + NGINX Ingress)
 
-*Azure AKS documentation remains in this repository as architecture and deployment evidence. The active live deployment runs on Vercel, Render, OCI ML Inference, Neon PostgreSQL, and Upstash Redis.*
+*Azure AKS and OCI deployment records remain in this repository as architecture and deployment evidence. The active live deployment runs on Vercel, Render, Railway ML Inference, Neon PostgreSQL, and Upstash Redis.*
 
-[![Tech Stack](https://img.shields.io/badge/Active_Stack-React%2019%20%7C%20FastAPI%20%7C%20Render%20%7C%20OCI-blue)]()
+[![Tech Stack](https://img.shields.io/badge/Active_Stack-React%2019%20%7C%20FastAPI%20%7C%20Render%20%7C%20Railway-blue)]()
 [![ML Models](https://img.shields.io/badge/ML-LightGBM%20%7C%20Item--Item%20Similarity%20%7C%20SVD%20%28Offline%29-green)]()
-[![Deployment](https://img.shields.io/badge/Deployment-Render%20%2B%20Vercel%20%2B%20OCI-blue)]()
-[![History](https://img.shields.io/badge/History-Azure%20AKS-orange)]()
+[![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Models%20Repo-yellow?logo=huggingface)](https://huggingface.co/ParminderzHuggingFace/atlas-railway-models)
+[![Deployment](https://img.shields.io/badge/Deployment-Render%20%2B%20Vercel%20%2B%20Railway-blue)]()
+[![History](https://img.shields.io/badge/History-OCI%20%26%20Azure%20AKS-orange)]()
 [![Tests](https://img.shields.io/badge/Tests-8%20Suites%20Passed%20%28GO%29-success)]()
 
 ![Atlas Demo](demo.gif)
@@ -25,7 +26,7 @@ Atlas is a **cloud-native e-commerce and recommendation platform** with an integ
 - **API Gateway**: Coordinated multi-service readiness probing, route proxying, and caching.
 - **Catalog Microservice**: Product catalog, category hierarchies, and real-time interaction event ingestion into Neon PostgreSQL.
 - **Recommendation Microservice**: Real-time multi-strategy candidate generation, session intent re-ranking via Upstash Redis, and 90-day long-term user personalization.
-- **ML Inference Microservice (OCI Host)**: Remote high-throughput model serving hosting Item-Item Co-visitation similarity and LightGBM ranking over 16 behavioral features.
+- **ML Inference Microservice (Railway / Hugging Face)**: Remote high-throughput model serving hosting Item-Item Co-visitation similarity and LightGBM ranking over 16 behavioral features. Deployed on Railway with automated runtime model retrieval from the Hugging Face repository ([ParminderzHuggingFace/atlas-railway-models](https://huggingface.co/ParminderzHuggingFace/atlas-railway-models)), with historical deployment on an OCI VM.
 - **User & Authentication Microservice**: JWT authentication, bcrypt password hashing, and single-use 6-digit numeric OTP password recovery via Gmail SMTP (backend service implementation intact; email delivery is limited by Render free-tier outbound SMTP network constraints, so UI informs users to create a new account if needed).
 - **Real Product Catalog**: 2,000 curated Amazon products across 4 categories (Electronics, Cell Phones, Sports, Software).
 
@@ -44,7 +45,9 @@ The production services are live and directly accessible for interactive testing
 | **Catalog Service** | https://catalog-service-uo46.onrender.com | [/docs](https://catalog-service-uo46.onrender.com/docs) | [/openapi.json](https://catalog-service-uo46.onrender.com/openapi.json) |
 | **Recommendation Service** | https://recommendation-service-8ag0.onrender.com | [/docs](https://recommendation-service-8ag0.onrender.com/docs) | [/openapi.json](https://recommendation-service-8ag0.onrender.com/openapi.json) |
 | **User & Auth Service** | https://user-service-rzbt.onrender.com | [/docs](https://user-service-rzbt.onrender.com/docs) | [/openapi.json](https://user-service-rzbt.onrender.com/openapi.json) |
-| **ML Inference Engine (OCI)** | http://150.230.143.133:8001 | [/docs](http://150.230.143.133:8001/docs) | [/openapi.json](http://150.230.143.133:8001/openapi.json) |
+| **ML Inference Engine (Railway)** | https://atlas-ml-inference-production.up.railway.app | [/docs](https://atlas-ml-inference-production.up.railway.app/docs) | [/openapi.json](https://atlas-ml-inference-production.up.railway.app/openapi.json) |
+| **ML Model Repo (Hugging Face)** | https://huggingface.co/ParminderzHuggingFace/atlas-railway-models | [Model Card](https://huggingface.co/ParminderzHuggingFace/atlas-railway-models) | [Files & Versions](https://huggingface.co/ParminderzHuggingFace/atlas-railway-models/tree/main) |
+| *(ML Inference Host - OCI History)* | *http://150.230.143.133:8001* | *[OCI /docs](http://150.230.143.133:8001/docs)* | *[OCI /openapi.json](http://150.230.143.133:8001/openapi.json)* |
 
 *Note on Free-Tier Operation: Render services sleep after 15 minutes of inactivity and require ~25–35s for container cold starts. The frontend bypasses the API Gateway specifically when waking the Catalog, Recommendation, and User services because Render blocks/rejects the wakeup call when one Render service attempts to wake another sleeping Render service. The frontend therefore directly triggers those three Render services first, after which the existing API Gateway readiness logic performs the authoritative readiness checks.*
 
@@ -59,7 +62,7 @@ User Request (GET /api/v1/recommendations?user_id=...&k=8)
     ↓
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ 1. CANDIDATE GENERATION (Recall Layer)                                  │
-│   • Item Similarity (TF-IDF Co-visitation via OCI :8001)               │
+│   • Item Similarity (TF-IDF Co-visitation via Railway / OCI history)   │
 │   • Category Similarity (Product detail fallback)                       │
 │   • Global Popularity Baseline (Cold start fallback)                    │
 │   • SVD Collaborative Filtering (Preserved in offline training/Swagger) │
@@ -67,7 +70,7 @@ User Request (GET /api/v1/recommendations?user_id=...&k=8)
                                      │ (100 candidates)
                                      ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ 2. TWO-STAGE LIGHTGBM RE-RANKING (OCI Host :8001)                      │
+│ 2. TWO-STAGE LIGHTGBM RE-RANKING (Railway ML Host / OCI History)       │
 │   • 16 behavioral features (user recency, item conversion, popularity)  │
 │   • LambdaRank NDCG optimization                                        │
 └────────────────────────────────────┬────────────────────────────────────┘
@@ -94,7 +97,7 @@ Final Hydrated Recommendations returned to UI (Top K: 8 items)
 ### SVD Collaborative Filtering: Offline vs. Online Serving
 - **Dataset**: Matrix factorization trained on 2.7M RetailRocket interactions across 1.4M users and 235K items (10 latent components).
 - **Online Production Serving Status**: Intentionally **disabled** in the default frontend recommendation path because RetailRocket user integer IDs differ from live Atlas user UUIDs, preventing artificial cold-start failure.
-- **Offline & Swagger Testing Availability**: Fully preserved in `training/` pipeline, offline evaluations, and directly testable on the OCI ML Swagger endpoint using RetailRocket item/user IDs (e.g. Item ID `359491` or `1000`).
+- **Offline & Swagger Testing Availability**: Fully preserved in `training/` pipeline, offline evaluations, and directly testable on the live Railway Swagger endpoint (and historical OCI Swagger) using RetailRocket item/user IDs (e.g. Item ID `359491` or `1000`).
 
 ---
 
@@ -102,12 +105,12 @@ Final Hydrated Recommendations returned to UI (Top K: 8 items)
 
 | Capability | Status | Implementation Location | Active in Prod | Architectural Notes |
 | :--- | :---: | :--- | :---: | :--- |
-| **Item-Item Similarity** | Trained & Active | OCI Host (`:8001`) + FastAPI | **YES** | Content & co-visitation similarity for similar products |
+| **Item-Item Similarity** | Trained & Active | Railway Host (OCI Provenance) + FastAPI | **YES** | Content & co-visitation similarity for similar products |
 | **Popularity Baseline** | Active | PostgreSQL / Redis | **YES** | Global baseline ensuring robust category coverage |
-| **LightGBM Re-Ranker** | Trained & Active | OCI Host (`:8001`) | **YES** | 16-feature ranking model trained with LambdaRank |
+| **LightGBM Re-Ranker** | Trained & Active | Railway Host (OCI Provenance) | **YES** | 16-feature ranking model trained with LambdaRank |
 | **Session Intent Re-Ranking** | Active | Upstash Redis | **YES** | Bounded intent boost (+0.35 to +0.60 $\times$ span) |
 | **Long-Term Personalization** | Active | Neon PostgreSQL Events | **YES** | 90-day category preference profile (+0.10 $\times$ span) |
-| **SVD Matrix Factorization** | Offline / Testing | `training/` & OCI Swagger | **OFFLINE** | Preserved for offline retraining & Swagger testing |
+| **SVD Matrix Factorization** | Offline / Testing | `training/` & Railway/OCI Swagger | **OFFLINE** | Preserved for offline retraining & Swagger testing |
 | **PostgreSQL Event Ingestion** | Active | Catalog Service / Neon | **YES** | Real-time logging of views, clicks, and cart events |
 | **Coordinated Startup Gate** | Active | API Gateway (`/api/v1/ready`) | **YES** | Probes dependencies and gates UI during cold boot |
 | **Guest Cart Redirect Guard** | Active | React Frontend Auth Router | **YES** | Redirects guests to `/login` with return path |
@@ -115,7 +118,7 @@ Final Hydrated Recommendations returned to UI (Top K: 8 items)
 
 ## Architecture Overview
 
-### Active Production Architecture (Render + Vercel)
+### Active Production Architecture (Render + Vercel + Railway)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -145,8 +148,8 @@ Final Hydrated Recommendations returned to UI (Top K: 8 items)
          │                   │                   │ (REST /infer)
          │                   │                   ▼
          │                   │          ┌──────────────────┐
-         │                   │          │ OCI ML Inference │
-         │                   │          │ Host (:8001)     │
+         │                   │          │ Railway ML Engine│
+         │                   │          │ (OCI History)    │
          │                   │          │ • LightGBM 16-Feat
          │                   │          │ • Item-Item Sim  │
          │                   │          └──────────────────┘

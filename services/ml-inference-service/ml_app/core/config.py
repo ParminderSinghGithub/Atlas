@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # Model serving controls (SVD online serving disabled in production path)
     enable_svd_serving: bool = False
 
+    # Hugging Face Model Repository (Railway / cloud artifact acquisition)
+    hf_model_repo: Optional[str] = None
+    hf_token: Optional[str] = None
+    hf_revision: Optional[str] = None
+    auto_download_artifacts: bool = True
+
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -53,6 +59,10 @@ def resolve_artifacts_dir() -> Path:
     """
     configured = Path(settings.artifacts_path)
     if configured.exists():
+        if (configured / "models").exists() or (configured / "features").exists():
+            return configured
+        if (configured / "artifacts").exists():
+            return configured / "artifacts"
         return configured
 
     # Try common local development locations relative to workspace root

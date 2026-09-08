@@ -17,7 +17,7 @@
 
 ---
 
-### Active Production Architecture (Vercel + Render + OCI + Neon + Upstash)
+### Active Production Architecture (Vercel + Render + Railway + Neon + Upstash, with OCI & AKS History)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -51,8 +51,8 @@
            │                      │                      │ (HTTP REST /infer)
            │                      │                      ▼
            │                      │             ┌──────────────────┐
-           │                      │             │ OCI ML Inference │
-           │                      │             │ Host (:8001)     │
+           │                      │             │ Railway ML Engine│
+           │                      │             │ (OCI History)    │
            │                      │             │ • Item-Item Sim  │
            │                      │             │ • LightGBM 16-Feat│
            │                      │             └──────────────────┘
@@ -525,7 +525,7 @@ const api = axios.create({
 
 **Key Responsibilities**:
 - **Single Public Entry Point**: Single CORS origin and SSL termination
-- **Readiness Orchestration**: Deep multi-service health verification (`/api/v1/ready`) checking Catalog, User, Recommendation, and ML Inference Engine (OCI). Operates in tandem with the frontend pre-wakeup trigger (the frontend bypasses the API Gateway specifically when waking the Catalog, Recommendation, and User services because Render blocks/rejects the wakeup call when one Render service attempts to wake another sleeping Render service; the frontend directly triggers those three Render services first, after which the API Gateway readiness logic performs the authoritative readiness checks).
+- **Readiness Orchestration**: Deep multi-service health verification (`/api/v1/ready`) checking Catalog, User, Recommendation, and ML Inference Engine (Railway / OCI history). Operates in tandem with the frontend pre-wakeup trigger (the frontend bypasses the API Gateway specifically when waking the Catalog, Recommendation, and User services because Render blocks/rejects the wakeup call when one Render service attempts to wake another sleeping Render service; the frontend directly triggers those three Render services first, after which the API Gateway readiness logic performs the authoritative readiness checks).
 - **Service Isolation**: Downstream microservices operate without public ingress exposure
 
 ---
@@ -586,8 +586,8 @@ GET  /health                   - Service health probe
 **Purpose**: Multi-strategy candidate recall, session intent re-ranking, and user personalization
 
 **Key Features**:
-- Candidate Generation: Content/Item similarity (via OCI host), category similarity, and popularity baseline
-- External ML Delegation: Calls OCI ML Inference Engine (`POST /api/v1/infer`)
+- Candidate Generation: Content/Item similarity (via Railway host / OCI history), category similarity, and popularity baseline
+- External ML Delegation: Calls ML Inference Engine (`POST /api/v1/infer`)
 - Real-Time Session Intent Re-Ranking: Dynamic Upstash Redis intent boost (+0.35 to +0.60 $\times$ `score_span`, capped position shift)
 - Long-Term Personalization: Neon PostgreSQL 90-day category preference profile (+0.10 $\times$ `score_span`, 1-hour Redis cache)
 - Graceful Degradation: Automatic fallback to local popularity or category similarity on timeouts (>2.0s)
@@ -602,11 +602,11 @@ GET  /health                   - Service health probe
 **Dependencies**:
 - PostgreSQL (Catalog metadata & 90-day interaction events)
 - Upstash Redis (Session signals & long-term preference cache)
-- OCI ML Inference Engine (`http://150.230.143.133:8001`)
+- ML Inference Engine (Railway: `https://atlas-ml-inference-production.up.railway.app`, OCI History: `http://150.230.143.133:8001`)
 
 ---
 
-### 6. ML Inference Service (FastAPI on OCI Host)
+### 6. ML Inference Service (FastAPI on Railway, OCI Provenance)
 
 **Purpose**: High-performance remote ML model hosting and score calculation
 
@@ -615,6 +615,7 @@ GET  /health                   - Service health probe
 - LightGBM LambdaRank Precision Ranker (16 behavioral features)
 - SVD Collaborative Filtering (offline matrix factorization exploration)
 - SHA-256 artifact integrity validation on startup
+- Dynamic artifact synchronization on boot from Hugging Face model repository: [ParminderzHuggingFace/atlas-railway-models](https://huggingface.co/ParminderzHuggingFace/atlas-railway-models)
 
 **Endpoints**:
 ```
